@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # 1. 安装基础工具和 Docker CLI (用于控制宿主机 Docker)
 RUN apt-get update && apt-get install -y \
