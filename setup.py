@@ -28,7 +28,7 @@ def check_env():
     log("1. 环境自检...")
     
     if shutil.which("docker") is None:
-        log("错误: 未找到 Docker。请先安装: sudo apt install docker.io", RED)
+        log("错误: 未找到 Docker。", RED)
         sys.exit(1)
 
     # 检查是否有 docker compose (新版) 或 docker-compose (旧版)
@@ -64,7 +64,7 @@ def setup_files():
         else:
             with open(".env", "w") as f:
                 f.write("OPENAI_API_KEY=sk-xxxx\nLOG_LEVEL=INFO\n")
-            log("已生成默认 .env 模板。", YELLOW)
+            log("已生成默认 .env 模板。请稍后填入 API Key。", YELLOW)
 
 def start_containers(compose_cmd):
     """启动容器"""
