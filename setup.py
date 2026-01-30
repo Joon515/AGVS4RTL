@@ -1,85 +1,98 @@
+#!/usr/bin/env python3
+import os
 import subprocess
 import sys
-import os
 import shutil
-from pathlib import Path
 
-# 定义颜色输出，提升体验
+# 颜色定义
 GREEN = "\033[92m"
+YELLOW = "\033[93m"
 RED = "\033[91m"
 RESET = "\033[0m"
 
 def log(msg, color=GREEN):
-    print(f"{color}[Setup] {msg}{RESET}")
+    print(f"{color}[HDL-Setup] {msg}{RESET}")
 
-def check_docker_running():
-    """检查 Docker 是否安装且正在运行"""
+def run_cmd(cmd, exit_on_fail=True):
+    """运行 Shell 命令"""
     try:
-        subprocess.run(["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log("Docker 状态正常。")
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        log("错误: Docker 未运行或未安装！请先启动 Docker Desktop。", RED)
-        sys.exit(1)
-
-def install_python_deps():
-    """安装宿主机 Python 依赖"""
-    log("正在安装 Python 依赖 (requirements.txt)...")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        # shell=True 允许使用复合命令，但要注意安全
+        subprocess.check_call(cmd, shell=True)
     except subprocess.CalledProcessError:
-        log("依赖安装失败，请检查网络或 pip 配置。", RED)
-        sys.exit(1)
+        log(f"命令执行失败: {cmd}", RED)
+        if exit_on_fail:
+            sys.exit(1)
 
-def build_docker_image():
-    """构建统一的沙盒镜像"""
-    image_name = "hdl-agent-sandbox:latest"
-    dockerfile_path = "./sandbox" # 假设 Dockerfile 在这个目录下
+def check_env():
+    """检查 Docker 环境"""
+    log("1. 环境自检...")
     
-    log(f"正在构建 Docker 镜像: {image_name} (这可能需要几分钟)...")
-    if not os.path.exists(os.path.join(dockerfile_path, "Dockerfile")):
-        log(f"错误: 找不到 {dockerfile_path}/Dockerfile", RED)
+    if shutil.which("docker") is None:
+        log("错误: 未找到 Docker。请先安装: sudo apt install docker.io", RED)
         sys.exit(1)
 
-    try:
-        subprocess.run(["docker", "build", "-t", image_name, dockerfile_path], check=True)
-        log("Docker 镜像构建成功！")
-    except subprocess.CalledProcessError:
-        log("镜像构建失败。", RED)
-        sys.exit(1)
+    # 检查是否有 docker compose (新版) 或 docker-compose (旧版)
+    has_compose_plugin = subprocess.run("docker compose version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    has_compose_legacy = shutil.which("docker-compose") is not None
 
-def setup_env_file():
-    """从模板复制 .env 文件"""
+    if not (has_compose_plugin or has_compose_legacy):
+        log("错误: 未找到 Docker Compose。", RED)
+        sys.exit(1)
+        
+    return "docker compose" if has_compose_plugin else "docker-compose"
+
+def setup_files():
+    """初始化目录和配置"""
+    log("2. 初始化目录结构...")
+    
+    # 确保关键目录存在
+    os.makedirs("deploy", exist_ok=True)
+    os.makedirs("data/workspace", exist_ok=True)
+    os.makedirs("data/ip_library", exist_ok=True)
+    os.makedirs("app", exist_ok=True)
+
+    # 创建一个空的 main.py 防止报错
+    if not os.path.exists("app/main.py"):
+        with open("app/main.py", "w") as f:
+            f.write("import time\nprint('HDL-Agent Started...')\nwhile True: time.sleep(10)")
+
+    # 处理 .env
     if not os.path.exists(".env"):
         if os.path.exists(".env.example"):
             shutil.copy(".env.example", ".env")
-            log("已创建 .env 文件，请稍后填入 API Key。")
+            log("已创建 .env，请稍后填入 API Key。", YELLOW)
         else:
-            # 自动创建一个基础模板
             with open(".env", "w") as f:
                 f.write("OPENAI_API_KEY=sk-xxxx\nLOG_LEVEL=INFO\n")
-            log("已创建 .env 文件模板。")
-    else:
-        log(".env 文件已存在，跳过。")
+            log("已生成默认 .env 模板。", YELLOW)
+
+def start_containers(compose_cmd):
+    """启动容器"""
+    log("3. 构建并启动容器 (Docker Compose)...")
+    
+    # 停止旧的
+    run_cmd(f"{compose_cmd} down", exit_on_fail=False)
+    
+    # 构建并启动
+    # --build 确保每次 Dockerfile 变动都会重编
+    # -d 后台运行
+    run_cmd(f"{compose_cmd} up --build -d")
+    
+    log("容器组已启动！")
+    print("-" * 40)
+    print(f"{YELLOW}开发环境就绪。{RESET}")
+    print(f"进入大脑容器:  {GREEN}docker exec -it hdl_agent_core bash{RESET}")
+    print(f"查看日志:      {GREEN}{compose_cmd} logs -f{RESET}")
+    print("-" * 40)
 
 def main():
-    print("="*40)
-    print("   HDL Agent 项目一键初始化工具")
-    print("="*40)
-    
-    # 1. 环境检查
-    setup_env_file()
-    check_docker_running()
-    
-    # 2. 安装依赖
-    install_python_deps()
-    
-    # 3. 构建 Docker
-    build_docker_image()
-    
-    print("\n" + "="*40)
-    log("环境部署完成！🎉")
-    log("请确保在 .env 文件中填入了正确的 API Key。")
-    log("运行 'python main.py' 启动项目。")
+    if not os.path.exists("setup.py"):
+        log("请在项目根目录下运行此脚本！", RED)
+        sys.exit(1)
+
+    compose_cmd = check_env()
+    setup_files()
+    start_containers(compose_cmd)
 
 if __name__ == "__main__":
     main()

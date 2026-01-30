@@ -1,33 +1,35 @@
-version: '3.8'
-
 services:
-  # 服务 1: 核心智能体
+  # 服务 1: 大脑 (Python 3.12)
   agent-core:
     build:
-      context: .
+      context: .                # 上下文：根目录
       dockerfile: deploy/app.Dockerfile
+    image: hdl-agent-core:latest
     container_name: hdl_agent_core
     volumes:
-      - ./app:/app/app          # 代码热重载：本地改代码，容器内生效
+      - ./app:/app/app          # 源码热重载
       - ./data:/app/data        # 数据共享
-      - /var/run/docker.sock:/var/run/docker.sock # 关键：让大脑能控制 Docker
+      - /var/run/docker.sock:/var/run/docker.sock # 控制权
     env_file:
       - .env
     depends_on:
       - eda-sandbox
-    command: tail -f /dev/null  # 保持运行，方便你进入调试，或者设为 python app/main.py
+    # 默认命令：运行 main.py (-u 禁止缓冲，实时输出日志)
+    command: python3 -u app/main.py
     networks:
       - hdl_net
 
-  # 服务 2: 仿真沙盒
+  # 服务 2: 肌肉 (Verilator/Python 3.10)
   eda-sandbox:
     build:
-      context: .
+      context: .                # 上下文：根目录
       dockerfile: deploy/sandbox.Dockerfile
+    image: hdl-eda-sandbox:latest
     container_name: hdl_sandbox
     volumes:
-      - ./data/workspace:/workspace # 共享工作区，让大脑能读到仿真结果
-    command: tail -f /dev/null  # 静默待命
+      - ./data/workspace:/workspace # 共享工作区
+    # 静默运行，等待被大脑调用
+    command: tail -f /dev/null
     networks:
       - hdl_net
 
