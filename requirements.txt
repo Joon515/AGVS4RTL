@@ -1,0 +1,15 @@
+# --- Core Framework ---
+langgraph>=0.0.10
+langchain>=0.1.0
+langchain-openai
+
+# --- Data Validation ---
+pydantic>=2.5.0  
+jsonschema
+
+# --- Infrastructure ---
+docker>=7.0.0
+
+# --- Utilities ---
+python-dotenv
+rich
