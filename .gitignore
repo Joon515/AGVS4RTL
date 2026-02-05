@@ -16,3 +16,5 @@ venv/
 # Docker 生成的临时文件 (如果有)
 sandbox/workspace/*
 !sandbox/workspace/.keep
+
+.github/*

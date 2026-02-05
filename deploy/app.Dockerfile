@@ -8,6 +8,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     curl \
     git \
     docker.io \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,7 +17,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN ls -la requirements.txt && echo "---START---" && cat requirements.txt && echo "---END---"
 # 安装依赖
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+# 将第 19 行修改为：
+RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ && \
+    pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
 # 安装 debugpy 方便未来远程调试
 RUN pip install debugpy

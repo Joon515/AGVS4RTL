@@ -1,0 +1,9 @@
+
+top_module
+├── control_unit
+│   ├── decoder
+│   └── fsm
+└── datapath
+    ├── alu
+    ├── register_file
+    └── memory_interface
