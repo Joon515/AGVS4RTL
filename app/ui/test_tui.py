@@ -59,7 +59,7 @@ def test_tui_components():
     app = TUIApp(workspace_root=Path("/app"))
     print("\n✅ TUIApp initialized successfully")
     print(f"   Workspace root: {app.workspace_root}")
-    print(f"   Preset params: {app.params}")
+    print(f"   Agent config keys: {list(app.agent_config.keys())}")
     
     # Test loading tasks
     tasks = app._load_tasks()

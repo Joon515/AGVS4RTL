@@ -13,9 +13,9 @@
   },
   {
     "name": "模块生成",
-    "status": "not_started",
-    "duration": "-",
-    "loops": "-"
+    "status": "failed",
+    "duration": "1.2s",
+    "loops": "3"
   },
   {
     "name": "单元测试",

@@ -10,6 +10,10 @@
 | constraints | object | 结构化约束集合（硬/软） |
 | metadata | object | 请求元数据（时间戳、请求ID等） |
 
+## 相关配置规范
+
+- Agent 配置与 API Key 加密存储见: docs/spec/agent-config.md
+
 ## constraints 字段
 
 ```json

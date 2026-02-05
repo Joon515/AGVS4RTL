@@ -49,6 +49,7 @@ def setup_files():
     os.makedirs("deploy", exist_ok=True)
     os.makedirs("data/workspace", exist_ok=True)
     os.makedirs("data/ip_library", exist_ok=True)
+    os.makedirs("data/config/keys", exist_ok=True)
     os.makedirs("app", exist_ok=True)
 
     # 创建一个空的 main.py 防止报错
@@ -56,15 +57,7 @@ def setup_files():
         with open("app/main.py", "w") as f:
             f.write("import time\nprint('HDL-Agent Started...')\nwhile True: time.sleep(10)")
 
-    # 处理 .env
-    if not os.path.exists(".env"):
-        if os.path.exists(".env.example"):
-            shutil.copy(".env.example", ".env")
-            log("已创建 .env，请稍后填入 API Key。", YELLOW)
-        else:
-            with open(".env", "w") as f:
-                f.write("OPENAI_API_KEY=sk-xxxx\nLOG_LEVEL=INFO\n")
-            log("已生成默认 .env 模板。请稍后填入 API Key。", YELLOW)
+    log("已初始化 config 目录，API Key 需通过 TUI 输入并加密保存。", YELLOW)
 
 def start_containers(compose_cmd):
     """启动容器"""
@@ -73,10 +66,9 @@ def start_containers(compose_cmd):
     # 停止旧的
     run_cmd(f"{compose_cmd} down", exit_on_fail=False)
     
-    # 构建并启动
-    # --build 确保每次 Dockerfile 变动都会重编
+    # 启动
     # -d 后台运行
-    run_cmd(f"{compose_cmd} up --build -d")
+    run_cmd(f"{compose_cmd} up -d")
     
     log("容器组已启动！")
     print("-" * 40)

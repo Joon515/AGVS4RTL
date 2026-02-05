@@ -4,10 +4,6 @@ __pycache__/
 venv/
 .venv/
 
-# 环境变量 (绝对不能上传!!!)
-.env
-!.env.examples
-
 # 编辑器配置
 .vscode/
 .idea/
