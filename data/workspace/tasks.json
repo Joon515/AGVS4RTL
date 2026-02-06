@@ -1,0 +1,26 @@
+[
+  {
+    "name": "预处理需求",
+    "status": "success",
+    "duration": "2.3s",
+    "loops": "1"
+  },
+  {
+    "name": "架构设计",
+    "status": "in_progress",
+    "duration": "5.1s",
+    "loops": "2"
+  },
+  {
+    "name": "模块生成",
+    "status": "failed",
+    "duration": "1.2s",
+    "loops": "3"
+  },
+  {
+    "name": "单元测试",
+    "status": "not_started",
+    "duration": "-",
+    "loops": "-"
+  }
+]

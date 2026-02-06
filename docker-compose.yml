@@ -10,16 +10,14 @@ services:
       - ./app:/app/app          # 源码热重载
       - ./data:/app/data        # 数据共享
       - /var/run/docker.sock:/var/run/docker.sock # 控制权
-    env_file:
-      - .env
     depends_on:
       - eda-sandbox
-    # 默认命令：运行 main.py (-u 禁止缓冲，实时输出日志)
-    command: python3 -u app/main.py
+    # 默认命令：保持运行，用于进入容器测试
+    command: tail -f /dev/null
     networks:
       - hdl_net
 
-  # 服务 2: 肌肉 (Verilator/Python 3.10)
+  # 服务 2: 肌肉 (Verilator/Python 3.12)
   eda-sandbox:
     build:
       context: .                # 上下文：根目录

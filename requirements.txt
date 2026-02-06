@@ -13,3 +13,5 @@ docker>=7.0.0
 # --- Utilities ---
 python-dotenv
 rich
+cryptography
+pqcrypto

@@ -1,0 +1,47 @@
+{
+  "agents": {
+    "openai_agent": {
+      "model": "gpt-4",
+      "top_k": 5,
+      "top_p": 0.9,
+      "temperature": 0.7,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "YgdpAjLWnnNF/6dbTjn94LyXT2yl4zY+Nte8qSNW6VpYosfPs+Eg7OvLUA6+A3fxaEHPACdE7xizwNC5a28OPsNBPl6hU6qpeatVbeq1C/A7IK38Cxe9K5KEQ2fnkl04lxwsrg0PCxRe1ijkMqHd9EAap7Z6GEGDJ0WRKC4C5qykjRtX/66qc5geu4/SHJP/9EqreXxQklG8+r4xK+xcAiPwM+/lmF3v7QQGnGjS5KVMcYmfFsq4/beKtGii7YcEKNgb3AnNcmgMldtmoW0mwEFLoKYckTzSgzOUi/Dnf7WpDgj1Ti9aEYK8BtiHyHSauVdbcfY8OCDv+mVykbYPQA==",
+        "nonce": "U+d+tLFMwAEBOUvq",
+        "ciphertext": "9YJCRlfSG1nzFD86vT2itZWXtQBrOImRP6/tk1cVgATI0lJiTPY8+QQo"
+      }
+    },
+    "anthropic_agent": {
+      "model": "claude-3-opus",
+      "top_k": 3,
+      "top_p": 0.95,
+      "temperature": 0.5,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "LipsTSGAh0XKscdOCf9LmRitTMdgS82qpJny5v1Sk6g2gcypdVk5Z0LD/9piFlo7TAnEC9NSqGBiBBqCrTlp+UOI8PNbMzBn8Tue9kVeQz0HpPzZ0gEVJKuP2YNQYFg4sRwM/HH70XSK6NlK0JMLrflXPEP/9cPclQe7ZBZTKOGLiO8E3s0NR5KBvx4j+lCiy5moj/yuTswLMx1SLEjGDCO9JHqf9V/vH4i7ro7WCLwpL4RCyusISI5wxzSRdmYssKbJCSYmeWUeq17ojN2yxXNF4OpeI51IbqTTcTnQcLzTMNl9FdQSZbYGXoVYlrppzW3TmALiTpzixj5mJ8N7YA==",
+        "nonce": "ZcBYec5z9KEj9Ihj",
+        "ciphertext": "dqVFqAftFdCN+2kN9+qB4LTvyLDNcfidOxFXtcrxJ/Bo7OCuJsyv"
+      }
+    },
+    "local_agent": {
+      "model": "llama2-7b",
+      "top_k": 10,
+      "top_p": 0.8,
+      "temperature": 0.6,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "XpIfbAnepvobeQH2H/vHzBX+ceL20TIHXNvU6Q2ax4P/qza6wn15Vs63wkke+DCR4tD5yJGDQsS9WXRUjyEeoWgk/7uGncDK+vZ7qiqde68qDdwjZUHQ9F+20W+KFDZVHPKmwz6ulSl/s521R/hcq+B57ufn1/ciCIYn90dOYZ7AqgOtluPRXFpo5RMopGqeiMqQAHGtSmcs23VI4lDSNSbjhvRUVJxgH+ZzO4iHT2FCRMCjjOPl8nqqZHCCcRpsluyWb8vrhv2Wxo3NulCit0uJb68VGOx8tW4yV7IIkA1XHP24JRYdMbszKG50K/oWn5Ftp1FL7qlLzPXjUOJf2Q==",
+        "nonce": "n3fSmR5qGnICvvhI",
+        "ciphertext": "hFZsRUN/bmjprfFwS18h7mXUpIkwPV5tWHfl9geV7TXGQ8YncgJ/ikg="
+      }
+    }
+  },
+  "loop": {
+    "global_loop_budget": 3,
+    "retry_count_max": 2
+  },
+  "key_store": {
+    "active_key_id": "RSscnjC4iDgA"
+  }
+}
