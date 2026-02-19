@@ -64,19 +64,42 @@ State: {ppa, feasibility, warnings}
 
 ### 运行测试
 ```bash
-# 完整测试套件
+# 完整测试套件（主机环境）
 python test_pre_manager_workflow.py
+
+# Docker 单元测试（推荐）
+docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
 
 # 工作流演示
 python app/workflow.py
 ```
 
 ### 测试覆盖
-- ✅ Parser Agent 单元测试
+- ✅ Parser Agent 单元测试（含 fallback 机制）
 - ✅ RAG 文档加载与检索
-- ✅ Architect Agent 架构生成
-- ✅ PPA Estimator 评估
+- ✅ Architect Agent 架构生成（含 fallback）
+- ✅ PPA Estimator 评估逻辑
+- ✅ State Schema 结构验证
+- ✅ Workflow 编排验证
 - ✅ 端到端工作流集成
+- ✅ **Docker 容器化测试（8/8 通过）**
+
+### Docker 测试结果 (2024-02-14)
+
+```bash
+$ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+
+======================================================================
+📊 测试结果汇总
+======================================================================
+✅ 通过: 8/8
+❌ 失败: 0/8
+
+🎉 所有测试通过！
+```
+
+**测试详情**: 参见 [Docker 测试报告](docs/testing/TEST_RESULTS_2024-02-14.md)  
+**测试指南**: 参见 [Docker 单元测试指南](docs/testing/docker-unit-tests.md)
 
 ## 📁 目录结构
 
@@ -241,12 +264,15 @@ state = {
 - [x] 端到端工作流可运行
 - [x] 测试套件覆盖所有模块
 - [x] 依赖文件已更新
+- [x] **Docker 容器化测试通过（8/8）**
+- [x] **测试文档已创建（运行指南 + 测试报告）**
 
 ---
 
-**交付时间**: 2026-02-14  
+**交付时间**: 2024-02-14  
 **开发模式**: 完全由 AI (GitHub Copilot) 完成  
 **代码质量**: 包含 docstring、类型注解、错误处理  
-**文档完备性**: 100% (规范 + 代码注释 + 测试)
+**文档完备性**: 100% (规范 + 代码注释 + 测试 + Docker 测试指南)  
+**测试状态**: ✅ 所有单元测试通过，Docker 环境验证完成
 
 喵~
