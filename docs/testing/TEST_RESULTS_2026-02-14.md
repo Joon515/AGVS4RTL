@@ -1,6 +1,6 @@
 # AGVS4RTL Pre-Manager Agent 开发测试报告
 
-**日期**: 2024-02-14  
+**日期**: 2026-02-14  
 **测试范围**: Parser Agent, Architect Agent, PPA Estimator, RAG Module, State Schema, Workflow  
 **测试环境**: Docker (hdl_agent_core 容器)
 

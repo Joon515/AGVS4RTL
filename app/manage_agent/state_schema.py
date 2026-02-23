@@ -197,6 +197,19 @@ class AGVSState(TypedDict, total=False):
         }
     """
 
+    manager: Dict[str, Any]
+    """Manager orchestration summary.
+
+    Schema:
+        {
+            "status": str,
+            "next_module": Optional[str],
+            "execution_plan": List[str],
+            "updated_at": str,
+            "version_scope": str
+        }
+    """
+
 
 def create_initial_state(
     intent: Dict[str, Any],

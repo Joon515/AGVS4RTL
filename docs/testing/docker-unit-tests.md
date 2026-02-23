@@ -6,6 +6,13 @@
 
 ## 测试范围
 
+### 版本边界（当前版本）
+
+- 当前版本仅实现静态单元测试。
+- 非静态测试（依赖真实运行实例/容器交互）不在当前版本实现，计划在下一版本补齐。
+- 图结构测试（循环依赖、层次深度、孤立模块等）不在当前版本实现，计划在下一版本补齐。
+- 下一版本相关能力落地时，结构化解析与验证仍采用 AST 方法，不使用 Regex 做模块层次与端口语义解析。
+
 ### 已覆盖模块（Pre-Manager Agent 阶段）
 
 1. **State Schema** (`app/manage_agent/state_schema.py`)
@@ -26,7 +33,7 @@
    - ChromaDB 可选依赖检测
 
 5. **Parser Agent** (`app/pre_agent/parser_agent.py`)
-   - 静态方法 `_fallback_parse()` 正则表达式逻辑
+   - 静态方法 `_fallback_parse()` 规则匹配逻辑
    - 接口识别（axi, apb, uart, spi）
    - 约束提取（frequency, data_width）
 
@@ -37,8 +44,14 @@
 7. **Workflow** (`app/workflow.py`)
    - LangGraph 工作流编译
    - 3节点图（parser → architect → ppa_estimator）
+   - 4节点扩展图（parser → architect → ppa_estimator → manager）
 
-8. **File Structure**
+8. **Manager Agent** (`app/manage_agent/manager_agent.py`)
+   - 静态模块编排（leaf → mid → ip → top）
+   - retry/loop budget 状态推进
+   - `architecture_validation` 延期占位回写（AST 边界声明）
+
+9. **File Structure**
    - 核心 Python 文件存在性验证
 
 ## 运行测试
@@ -82,8 +95,8 @@ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
 ======================================================================
 📊 测试结果汇总
 ======================================================================
-✅ 通过: 8/8
-❌ 失败: 0/8
+✅ 通过: 9/9
+❌ 失败: 0/9
 
 🎉 所有测试通过！
 ```
@@ -209,4 +222,5 @@ print(f"✅ {name} 测试通过")
 ## 版本历史
 
 - **2024-02-14**: 初始版本，8个单元测试，无 LLM 依赖设计
-- 测试覆盖: State Schema, Preprocessor, PPA Estimator, RAG, Parser Agent, Architect Agent, Workflow, File Structure
+- **2026-02-22**: 增加 Manager Agent 静态编排测试，更新为9个单元测试
+- 测试覆盖: State Schema, Preprocessor, PPA Estimator, RAG, Parser Agent, Architect Agent, Workflow, Manager Agent, File Structure
