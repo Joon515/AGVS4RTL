@@ -197,6 +197,55 @@ class AGVSState(TypedDict, total=False):
         }
     """
 
+    generated_code: Dict[str, Any]
+    """Generated HDL code artifacts.
+
+    Schema:
+        {
+            "language": "verilog" | "systemverilog",
+            "kind": "framework" | "full",
+            "model": str,
+            "generated_at": str,
+            "content": str
+        }
+    """
+
+    round_outputs: List[Dict[str, Any]]
+    """Per-stage output history for multi-round traceability.
+
+    Schema:
+        [
+            {
+                "round": int,
+                "stage": str,
+                "model": str,
+                "timestamp": str,
+                "output": Dict[str, Any]
+            }
+        ]
+    """
+
+    verification: Dict[str, Any]
+    """Requirement-code consistency verification report.
+
+    Schema:
+        {
+            "status": "pass" | "warn" | "fail",
+            "consistency_score": int,
+            "summary": str,
+            "issues": [
+                {
+                    "type": str,
+                    "severity": "high" | "medium" | "low",
+                    "message": str,
+                    "evidence": str
+                }
+            ],
+            "verified_at": str,
+            "model": str
+        }
+    """
+
 
 def create_initial_state(
     intent: Dict[str, Any],
@@ -230,4 +279,5 @@ def create_initial_state(
         modules={},
         tests={},
         errors=[],
+        round_outputs=[],
     )

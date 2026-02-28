@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-02-28T20:04:42.675969+00:00",
+  "overall_pass": false,
+  "rules": [
+    "upstream_output_downstream_input_exact_passthrough",
+    "nlp_semantics_json_semantics_high_alignment",
+    "requirement_functionality_code_framework_high_alignment"
+  ],
+  "cases": [
+    {
+      "requirement": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+      "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "checks": {
+        "passthrough_exact": {
+          "pass": false,
+          "issues": [
+            "workflow execution failed"
+          ]
+        },
+        "nlp_json_high_alignment": {
+          "pass": false,
+          "score": 0,
+          "issues": [
+            "workflow execution failed"
+          ]
+        },
+        "requirement_code_high_alignment": {
+          "pass": false,
+          "score": 0,
+          "issues": [
+            "workflow execution failed"
+          ]
+        }
+      }
+    }
+  ]
+}

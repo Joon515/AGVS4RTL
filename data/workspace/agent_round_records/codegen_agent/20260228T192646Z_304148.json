@@ -1,0 +1,19 @@
+{
+  "request_id": "625c21a609a84b44bc778dc0b8c9f037",
+  "recorded_at": "2026-02-28T19:26:46.931913+00:00",
+  "instruction": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+  "agent_stage": "codegen",
+  "agent_dir": "codegen_agent",
+  "round": 4,
+  "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+  "stage_timestamp": "2026-02-28T18:46:06.381144+00:00",
+  "output": {
+    "generated_code": {
+      "language": "verilog",
+      "kind": "framework",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "generated_at": "2026-02-28T18:46:06.381133+00:00",
+      "content": "module gpio_top (\n    input  wire         clk,\n    input  wire         rst_n,\n\n    // AXI-Lite Interface (Slave)\n    input  wire [31:0]  axi_awaddr,\n    input  wire [2:0]   axi_awprot,\n    input  wire         axi_awvalid,\n    output wire         axi_awready,\n\n    input  wire [31:0]  axi_wdata,\n    input  wire [3:0]   axi_wstrb,\n    input  wire         axi_wvalid,\n    output wire         axi_wready,\n\n    output wire [1:0]   axi_bresp,\n    output wire         axi_bvalid,\n    input  wire         axi_bready,\n\n    input  wire [31:0]  axi_araddr,\n    input  wire [2:0]   axi_arprot,\n    input  wire         axi_arvalid,\n    output wire         axi_arready,\n\n    output wire [31:0]  axi_rdata,\n    output wire [1:0]   axi_rresp,\n    output wire         axi_rvalid,\n    input  wire         axi_rready,\n\n    // APB Interface\n    input  wire         apb_pclk,\n    input  wire         apb_preset_n,\n    input  wire [31:0]  apb_paddr,\n    input  wire         apb_psel,\n    input  wire         apb_penable,\n    input  wire         apb_pwrite,\n    input  wire [31:0]  apb_pwdata,\n    output wire [31:0]  apb_prdata,\n    output wire         apb_pready,\n    output wire         apb_pslverr,\n\n    // GPIO Ports\n    input  wire [31:0]  gpio_in,\n    output wire [31:0]  gpio_out,\n    output wire [31:0]  gpio_oe\n);\n\n    // TODO: Define registers for GPIO control and status\n    // - Output data register\n    // - Input data register (read-only)\n    // - Direction control register\n    // - Interrupt control/status registers (optional)\n\n    // TODO: Implement AXI-Lite read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Implement APB read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Synchronize interfaces to system clock 'clk'\n\nendmodule"
+    }
+  }
+}

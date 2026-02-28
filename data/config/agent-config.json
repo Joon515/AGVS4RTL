@@ -35,6 +35,61 @@
         "nonce": "n3fSmR5qGnICvvhI",
         "ciphertext": "hFZsRUN/bmjprfFwS18h7mXUpIkwPV5tWHfl9geV7TXGQ8YncgJ/ikg="
       }
+    },
+    "pre_agent": {
+      "model": "deepseek-chat",
+      "temperature": 0.1,
+      "api_base": "https://api.deepseek.com",
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "PBqnT68mur1GMFKQo2y8AXXTYHAMAdIbKatyOMimCKCGsRJKgrrOBhfU69J5JQfYqQ2locOJB2KYenHnwmTa2y52fFqsLQkBxmEbl+/fKa/VtQAGG5D2tuaMOFQ59ZSbMSyWdYEJjEnOl7ce2Wnh3NtVn2dxRi9tWdmqspE04WRu0ihXDWpkv+x+b4CpwJLMcxbs2exletAGLY+pQm1ABdUAvcESjC9SA9m9jie3YnwC/O//a0FFaZA5Kp1MqMqbS1772Gyhea9GFG7W97aJJZnl1zniFNxi/fTWeAPcIx/1ThEvfiiVjw4xTHmvQhv0aMhc+3cOIkEzstdRFXJPJA==",
+        "nonce": "RGDotCk64LRhisdc",
+        "ciphertext": "1YRAQJ5/2Lep/gye01IT2AdxLWZ4hXhf70cr8UXVv1Iiehw323Pq5C7abEFS6RiVG5kN"
+      }
+    },
+    "architecture_agent": {
+      "model": "deepseek-reasoner",
+      "temperature": 0.2,
+      "api_base": "https://api.deepseek.com",
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "X97McX5IJ84ivqPxxjNHKv5e1jhCCeGToZflHJ/YE+9TovjMshMXHtMUdUMW2hCTP77OSlH0YiW08eFhGYOa+KcScKKyIHE21A4g9xaHrO5MSeINDbwVStHA4II9xRJIEAF/WEAel2/8vS4CAn+S8MW3bAIXTbxK0r9rxtHoelWHYfCW9CM1ctMpupK2Ym9IAdWbFeD/IEtKnFvgcw6kG1n7n0A5qfuH0dDhglXZ06gP5rtZQUk9VxyM+tp9j5w1FXTVgSoGsbFe5FvKwRhUSbqhPWRCkFRehqfoOtGWOXTgpq4eUDKvUcZQvrn/E2Lz02OCaZVe86VIc1x8Q4eQnQ==",
+        "nonce": "6yo16qjIyLOVdl30",
+        "ciphertext": "docsImdtNVEcZ/m+33Eo4nC6yK+nY0H9oAHwBJ52xw52MFHFpIFP9wJz99vK11HsIDEE"
+      }
+    },
+    "generate_agent": {
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "api_base": "https://api.siliconflow.cn/v1",
+      "temperature": 0.1,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "JgpCWh6GHiVbQiplBZ5r9oghl/rm1MfTgcV2JVdc1WvIC8zRNq6fvk3oX937Qi+IChEOhpnDnUemGLGJQ2W1MuJ81Q4PZXUrbXx0SDof0+CntF5aBGkMkBieZ84Bi4bawxjfGJOl77UCNC2FYxkiEwH71/5Yij0OYBNZBY9lBfk8+uBe/2OfoKHoD53LlMZbtEa5rW3YgqXYhu19yNc4XlVqVduf6GbiHbWCHXXj9QYE2fyg3cRMuZxgACwYdStLEGY88qSurzVKrPAI7yynishXcBkdhUI2ry63lDvNnP2oH14Kp1B5cIpTqBG8yfdV/5u7KehJiy6enk52L6LTnA==",
+        "nonce": "fTRMLD40hER1AIMA",
+        "ciphertext": "VTiU5Xh0aJtg926E+PVJdrp4UU41HJu9om7aOl+QjdVCO0me2s2grSWeeuPMR+pjsDQ3s5uO1TXFqr/ArqMGSN5mQA=="
+      }
+    },
+    "coder_agent": {
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "api_base": "https://api.siliconflow.cn/v1",
+      "temperature": 0.1,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "JgpCWh6GHiVbQiplBZ5r9oghl/rm1MfTgcV2JVdc1WvIC8zRNq6fvk3oX937Qi+IChEOhpnDnUemGLGJQ2W1MuJ81Q4PZXUrbXx0SDof0+CntF5aBGkMkBieZ84Bi4bawxjfGJOl77UCNC2FYxkiEwH71/5Yij0OYBNZBY9lBfk8+uBe/2OfoKHoD53LlMZbtEa5rW3YgqXYhu19yNc4XlVqVduf6GbiHbWCHXXj9QYE2fyg3cRMuZxgACwYdStLEGY88qSurzVKrPAI7yynishXcBkdhUI2ry63lDvNnP2oH14Kp1B5cIpTqBG8yfdV/5u7KehJiy6enk52L6LTnA==",
+        "nonce": "fTRMLD40hER1AIMA",
+        "ciphertext": "VTiU5Xh0aJtg926E+PVJdrp4UU41HJu9om7aOl+QjdVCO0me2s2grSWeeuPMR+pjsDQ3s5uO1TXFqr/ArqMGSN5mQA=="
+      }
+    },
+    "verify_agent": {
+      "model": "deepseek-reasoner",
+      "api_base": "https://api.deepseek.com",
+      "temperature": 0.0,
+      "api_key_enc": {
+        "key_id": "RSscnjC4iDgA",
+        "encrypted_aes_key": "GmN+2nAf0cj91B+Erwsz4djDjNLP2XuYZrWaNVlSTGoavpX5GMhOc/8ZPkpruIdqv5+lyZLJOUVuKlg98L/TNc7BNQKDfK7eaBiVef4gzNfHx9C6Yb39PmR3ZL3AODHZO49U4I+2PgBmNA3UrPUDgkFshxNrwY6qGmV45i2+IgQb1/kfjnqrk5Fcy2QKf9EwWCjGMrAWdyt9XVA1bii72rtUQuEhPtIkeD+NzDZyBxWj/XETBJIRYrpeqqoypiCQWoorqwPfuzURHZ7jE2XG5RNLTgMY7TQZFKDHnYL6QaZiDdWKPwCeTUrOXR07nsPayP+xvs9rzqkw5+tLhgPA+A==",
+        "nonce": "6N0zA569ElulLiG2",
+        "ciphertext": "vA6HAYzcfVN6I0zAh4gBl+/+jUTaT6lsvKlM07A4yp6mUwgqUaKKl3a6ayUBhxLl7/+A"
+      }
     }
   },
   "loop": {

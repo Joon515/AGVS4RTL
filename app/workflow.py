@@ -18,8 +18,10 @@ from langgraph.graph import END, StateGraph
 from app.manage_agent import (
     AGVSState,
     architecture_design_node,
+    codegen_framework_node,
     create_initial_state,
     ppa_estimation_node,
+    verify_consistency_node,
 )
 from app.pre_agent.parser_agent import parse_requirement_node
 
@@ -80,6 +82,45 @@ def run_pre_manager_workflow(
     final_state = workflow.invoke(initial_state)
     
     return final_state
+
+
+def create_full_codegen_workflow() -> StateGraph:
+    """Create full workflow graph with consistency verification.
+
+    Workflow:
+        START → Parser(NLP) → Architect → Codegen → Verify → END
+    """
+    workflow = StateGraph(AGVSState)
+
+    workflow.add_node("parser", parse_requirement_node)
+    workflow.add_node("architect", architecture_design_node)
+    workflow.add_node("codegen", codegen_framework_node)
+    workflow.add_node("verify", verify_consistency_node)
+
+    workflow.set_entry_point("parser")
+    workflow.add_edge("parser", "architect")
+    workflow.add_edge("architect", "codegen")
+    workflow.add_edge("codegen", "verify")
+    workflow.add_edge("verify", END)
+
+    return workflow.compile()
+
+
+def run_full_codegen_workflow(
+    natural_language: str,
+    language: str = "zh",
+    source: str = "tui",
+) -> Dict[str, Any]:
+    """Execute full workflow: NLP -> Architect -> Codegen -> Verify."""
+    workflow = create_full_codegen_workflow()
+
+    initial_state = {
+        "natural_language": natural_language,
+        "language": language,
+        "source": source,
+    }
+
+    return workflow.invoke(initial_state)
 
 
 # Example usage

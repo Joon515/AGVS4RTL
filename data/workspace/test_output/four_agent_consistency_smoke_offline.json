@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-02-28T20:00:22.090704+00:00",
+  "overall_pass": false,
+  "rules": [
+    "upstream_output_downstream_input_exact_passthrough",
+    "nlp_semantics_json_semantics_high_alignment",
+    "requirement_functionality_code_framework_high_alignment"
+  ],
+  "cases": [
+    {
+      "requirement": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+      "models": {
+        "parser": "deepseek-chat",
+        "architect": "deepseek-reasoner",
+        "codegen": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "verify": null
+      },
+      "checks": {
+        "passthrough_exact": {
+          "pass": false,
+          "issues": [
+            "architect.input.intent != parser.output.intent",
+            "architect.input.constraints != parser.output.constraints",
+            "codegen.input.intent != parser.output.intent",
+            "codegen.input.constraints != parser.output.constraints",
+            "codegen.input.architecture != architect.output.architecture",
+            "verify.input.intent != parser.output.intent",
+            "verify.input.constraints != parser.output.constraints",
+            "verify.input.architecture != architect.output.architecture",
+            "verify.input.generated_code != codegen.output.generated_code"
+          ]
+        },
+        "nlp_json_high_alignment": {
+          "pass": true,
+          "score": 80,
+          "issues": [
+            "freq missing in constraints: 200MHz",
+            "width missing in constraints: 32"
+          ]
+        },
+        "requirement_code_high_alignment": {
+          "pass": true,
+          "score": 90,
+          "issues": [
+            "verification consistency_score missing"
+          ]
+        }
+      },
+      "round_count": 4,
+      "verification": {}
+    }
+  ]
+}

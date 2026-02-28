@@ -8,13 +8,13 @@ from the knowledge base.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from ..llm_config import resolve_agent_llm_config
 from ..rag.vector_store import KnowledgeLoader
 
 
@@ -93,9 +93,10 @@ class ArchitectAgent:
     
     def __init__(
         self,
-        model_name: str = "gpt-4o",
-        temperature: float = 0.2,
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
         api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
         rag_persist_dir: str = "data/rag/vector_db",
         use_rag: bool = True,
     ):
@@ -108,15 +109,24 @@ class ArchitectAgent:
             rag_persist_dir: RAG vector database directory
             use_rag: Whether to use RAG for design pattern retrieval
         """
-        self.model_name = model_name
-        self.temperature = temperature
+        cfg = resolve_agent_llm_config(
+            "architecture_agent",
+            model_name=model_name,
+            temperature=temperature,
+            api_key=api_key,
+            api_base=api_base,
+        )
+
+        self.model_name = cfg["model_name"] or "deepseek-reasoner"
+        self.temperature = cfg["temperature"] if cfg["temperature"] is not None else 0.2
         self.use_rag = use_rag
         
         # Initialize LLM
         self.llm = ChatOpenAI(
-            model=model_name,
-            temperature=temperature,
-            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            model=self.model_name,
+            temperature=self.temperature,
+            openai_api_key=cfg["api_key"],
+            openai_api_base=cfg["api_base"],
         )
         
         # Initialize RAG if enabled
@@ -162,10 +172,8 @@ class ArchitectAgent:
             HumanMessage(content=prompt),
         ]
         
-        response = self.llm.invoke(messages)
-        
-        # Step 4: Parse response
         try:
+            response = self.llm.invoke(messages)
             architecture = self._parse_llm_response(response.content)
         except Exception as e:
             print(f"Warning: Architecture parsing failed: {e}")
@@ -357,6 +365,24 @@ def architecture_design_node(state: Dict[str, Any]) -> Dict[str, Any]:
     metadata = state.get("metadata", {})
     
     architecture = architect.design(intent, constraints, metadata)
+
+    round_outputs = list(state.get("round_outputs", []))
+    round_outputs.append(
+        {
+            "round": len(round_outputs) + 1,
+            "stage": "architect",
+            "model": architect.model_name,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "input_snapshot": {
+                "intent": intent,
+                "constraints": constraints,
+                "metadata": metadata,
+            },
+            "output": {
+                "architecture": architecture,
+            },
+        }
+    )
     
     # Initialize version tracking
     version_entry = {
@@ -371,4 +397,5 @@ def architecture_design_node(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "architecture": architecture,
         "versions": [version_entry],
+        "round_outputs": round_outputs,
     }

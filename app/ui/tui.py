@@ -26,6 +26,7 @@ STATUS_ICON = {
 DEFAULT_AGENTS = [
     "pre_agent",
     "architecture_agent",
+    "verify_agent",
     "manager_agent",
     "generate_agent",
     "test_agent",

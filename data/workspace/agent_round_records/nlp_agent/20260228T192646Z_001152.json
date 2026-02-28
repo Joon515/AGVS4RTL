@@ -1,0 +1,48 @@
+{
+  "request_id": "625c21a609a84b44bc778dc0b8c9f037",
+  "recorded_at": "2026-02-28T19:26:46.931913+00:00",
+  "instruction": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+  "agent_stage": "parser",
+  "agent_dir": "nlp_agent",
+  "round": 1,
+  "model": "deepseek-chat",
+  "stage_timestamp": "2026-02-28T18:42:57.465692+00:00",
+  "output": {
+    "intent": {
+      "summary": "设计一个包含AXI-Lite从设备接口和APB配置接口的32位GPIO控制器，用于控制32个可配置引脚。",
+      "target_language": "verilog",
+      "clock": "clk",
+      "reset": "rst_n",
+      "interfaces": [
+        "axi-lite",
+        "apb"
+      ]
+    },
+    "constraints": {
+      "hard": [
+        {
+          "name": "freq",
+          "value": "100MHz",
+          "priority": 0
+        },
+        {
+          "name": "data_width",
+          "value": 32,
+          "priority": 0
+        },
+        {
+          "name": "gpio_count",
+          "value": 32,
+          "priority": 0
+        }
+      ],
+      "soft": [
+        {
+          "name": "area",
+          "value": "minimize",
+          "priority": 1
+        }
+      ]
+    }
+  }
+}
