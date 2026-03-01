@@ -329,6 +329,9 @@ def parse_requirement_node(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Return state update
     return {
+        "natural_language": natural_language,
+        "language": language,
+        "source": source,
         **result,
         "round_outputs": round_outputs,
     }

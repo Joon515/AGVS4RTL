@@ -21,7 +21,7 @@ from app.llm_config import resolve_agent_llm_config
 PROMPTS: List[Dict[str, str]] = [
     {
         "id": "json_parse",
-        "prompt": "将这句话转成JSON字段 summary/interfaces: 设计一个AXI-Lite 32位寄存器文件，200MHz。只输出JSON。",
+        "prompt": "将这句话转成JSON字段 summary/interfaces: 设计一个最简单的8位乘法器。只输出JSON。",
     },
     {
         "id": "arch_plan",

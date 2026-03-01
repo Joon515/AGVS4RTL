@@ -22,6 +22,16 @@ class AGVSState(TypedDict, total=False):
     All fields are optional (total=False) to support incremental state building.
     """
     
+    # ==================== Raw Request Stage ====================
+    natural_language: str
+    """Original user requirement text."""
+
+    language: str
+    """Input language hint (e.g., zh/en)."""
+
+    source: str
+    """Input source tag (e.g., tui/api/smoke)."""
+
     # ==================== Pre-processing Stage ====================
     intent: Dict[str, Any]
     """Design intent extracted from natural language.

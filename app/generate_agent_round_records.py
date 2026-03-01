@@ -79,6 +79,26 @@ def _collect_result(requirement: str) -> Dict[str, Any]:
         return cached
 
 
+def _collect_result_from_file(result_json: Path) -> Dict[str, Any]:
+    loaded = _safe_read_json(result_json)
+    if not loaded:
+        raise RuntimeError(f"invalid or empty result json: {result_json}")
+    if not loaded.get("verification"):
+        loaded["verification"] = _build_fallback_verification(loaded)
+        rounds = list(loaded.get("round_outputs", []))
+        rounds.append(
+            {
+                "round": len(rounds) + 1,
+                "stage": "verify",
+                "model": loaded["verification"].get("model", "fallback_rule_checker"),
+                "timestamp": _utc_now().isoformat(),
+                "output": {"verification": loaded["verification"]},
+            }
+        )
+        loaded["round_outputs"] = rounds
+    return loaded
+
+
 def _ensure_agent_dirs(base_dir: Path) -> Dict[str, Path]:
     paths: Dict[str, Path] = {}
     for stage, folder in AGENT_DIR_MAP.items():
@@ -93,13 +113,13 @@ def _write_record(path: Path, payload: Dict[str, Any]) -> Path:
     return path
 
 
-def generate_records(requirement: str, output_root: Path) -> Dict[str, Any]:
+def generate_records(requirement: str, output_root: Path, result_json: Path | None = None) -> Dict[str, Any]:
     now = _utc_now()
     request_id = uuid4().hex
     timestamp = now.isoformat()
     ts_name = now.strftime("%Y%m%dT%H%M%SZ")
 
-    result = _collect_result(requirement)
+    result = _collect_result_from_file(result_json) if result_json else _collect_result(requirement)
     round_outputs: List[Dict[str, Any]] = list(result.get("round_outputs", []))
     dir_map = _ensure_agent_dirs(output_root)
 
@@ -148,7 +168,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate one-round per-agent output records")
     parser.add_argument(
         "--requirement",
-        default="设计一个AXI-Lite 32位寄存器文件，200MHz。",
+        default="设计一个最简单的8位乘法器。",
         help="Single-round natural language instruction",
     )
     parser.add_argument(
@@ -156,12 +176,18 @@ def main() -> int:
         default="/app/data/workspace/agent_round_records",
         help="Root directory for per-agent record folders",
     )
+    parser.add_argument(
+        "--result-json",
+        default=None,
+        help="Use existing workflow result json instead of live model call",
+    )
     args = parser.parse_args()
 
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    manifest = generate_records(args.requirement, output_root)
+    result_json = Path(args.result_json) if args.result_json else None
+    manifest = generate_records(args.requirement, output_root, result_json=result_json)
     print("record_generation=ok")
     print(f"request_id={manifest['request_id']}")
     print(f"created_count={manifest['created_count']}")

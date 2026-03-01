@@ -1,0 +1,20 @@
+{
+  "request_id": "2bf24aaee2e54539b501798ca557fdf5",
+  "recorded_at": "2026-02-28T20:50:56.199486+00:00",
+  "instruction": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+  "agent_stage": "verify",
+  "agent_dir": "verify_agent",
+  "round": 5,
+  "model": "fallback_rule_checker",
+  "stage_timestamp": "2026-02-28T20:50:56.199615+00:00",
+  "output": {
+    "verification": {
+      "status": "pass",
+      "consistency_score": 85,
+      "summary": "fallback verification from cached output",
+      "issues": [],
+      "verified_at": "2026-02-28T20:50:56.199611+00:00",
+      "model": "fallback_rule_checker"
+    }
+  }
+}

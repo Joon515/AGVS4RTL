@@ -20,9 +20,9 @@ from app.workflow import run_full_codegen_workflow
 
 
 DEFAULT_CASES = [
-    "设计一个AXI-Lite 32位寄存器文件，200MHz。",
-    "设计一个APB接口的16位寄存器组，100MHz，低功耗。",
-    "实现UART接收发送控制器，8bit数据，50MHz。",
+    "设计一个最简单的8位乘法器。",
+    "设计一个最简单的8位有符号乘法器。",
+    "实现一个最简单的8位组合逻辑乘法器模块。",
 ]
 
 
@@ -151,7 +151,7 @@ def _check_requirement_code_alignment(requirement: str, result: Dict[str, Any]) 
             issues.append("UART related signals not found")
 
     verify_score = verify.get("consistency_score")
-    if isinstance(verify_score, int):
+    if isinstance(verify_score, (int, float)):
         if verify_score < 70:
             score -= 20
             issues.append(f"verify consistency_score too low: {verify_score}")

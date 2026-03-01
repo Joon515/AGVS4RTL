@@ -37,8 +37,8 @@
       }
     },
     "pre_agent": {
-      "model": "deepseek-chat",
-      "temperature": 0.1,
+      "model": "deepseek-reasoner",
+      "temperature": 0.0,
       "api_base": "https://api.deepseek.com",
       "api_key_enc": {
         "key_id": "RSscnjC4iDgA",

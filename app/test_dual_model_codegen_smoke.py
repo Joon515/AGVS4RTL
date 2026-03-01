@@ -61,7 +61,7 @@ def configure_models_for_smoke() -> None:
 def main() -> int:
     configure_models_for_smoke()
 
-    requirement = "设计一个AXI-Lite 32位寄存器文件，支持4KB地址空间，工作频率200MHz。"
+    requirement = "设计一个最简单的8位乘法器。"
     result = run_full_codegen_workflow(requirement, language="zh", source="smoke")
 
     intent = result.get("intent")

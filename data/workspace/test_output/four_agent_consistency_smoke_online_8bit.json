@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-03-01T04:14:31.929110+00:00",
+  "overall_pass": true,
+  "rules": [
+    "upstream_output_downstream_input_exact_passthrough",
+    "nlp_semantics_json_semantics_high_alignment",
+    "requirement_functionality_code_framework_high_alignment"
+  ],
+  "cases": [
+    {
+      "requirement": "设计一个最简单的8位乘法器。",
+      "models": {
+        "parser": "deepseek-reasoner",
+        "architect": "deepseek-reasoner",
+        "codegen": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "verify": "deepseek-reasoner"
+      },
+      "checks": {
+        "passthrough_exact": {
+          "pass": true,
+          "issues": []
+        },
+        "nlp_json_high_alignment": {
+          "pass": true,
+          "score": 90,
+          "issues": [
+            "width missing in constraints: 8"
+          ]
+        },
+        "requirement_code_high_alignment": {
+          "pass": true,
+          "score": 90,
+          "issues": [
+            "verification consistency_score missing"
+          ]
+        }
+      },
+      "round_count": 4,
+      "verification": {
+        "status": "pass",
+        "consistency_score": 1.0,
+        "summary": "自然语言需求为空，生成的结构化意图、架构和代码一致地仅处理时钟和复位接口。",
+        "issues": [],
+        "verified_at": "2026-03-01T04:14:31.928810+00:00",
+        "model": "deepseek-reasoner"
+      }
+    }
+  ]
+}

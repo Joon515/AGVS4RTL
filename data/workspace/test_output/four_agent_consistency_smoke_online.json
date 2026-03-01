@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-28T20:04:42.675969+00:00",
+  "generated_at": "2026-02-28T21:18:25.388162+00:00",
   "overall_pass": false,
   "rules": [
     "upstream_output_downstream_input_exact_passthrough",
@@ -9,28 +9,62 @@
   "cases": [
     {
       "requirement": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
-      "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "models": {
+        "parser": "deepseek-reasoner",
+        "architect": "deepseek-reasoner",
+        "codegen": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "verify": "deepseek-reasoner"
+      },
       "checks": {
         "passthrough_exact": {
-          "pass": false,
-          "issues": [
-            "workflow execution failed"
-          ]
+          "pass": true,
+          "issues": []
         },
         "nlp_json_high_alignment": {
           "pass": false,
-          "score": 0,
+          "score": 65,
           "issues": [
-            "workflow execution failed"
+            "interface missing in intent: axi-lite",
+            "freq missing in constraints: 200MHz",
+            "width missing in constraints: 32"
           ]
         },
         "requirement_code_high_alignment": {
           "pass": false,
-          "score": 0,
+          "score": 70,
           "issues": [
-            "workflow execution failed"
+            "AXI interface signals not found",
+            "verification consistency_score missing"
           ]
         }
+      },
+      "round_count": 4,
+      "verification": {
+        "status": "fail",
+        "consistency_score": 0.3,
+        "summary": "需求缺失，代码不完整，存在接口不匹配。",
+        "issues": [
+          {
+            "type": "intent_mismatch",
+            "severity": "high",
+            "message": "自然语言需求为空，无法验证与intent的一致性",
+            "evidence": "natural_language field is empty string"
+          },
+          {
+            "type": "interface_mismatch",
+            "severity": "medium",
+            "message": "intent中interfaces为空，但architecture定义了sys_bus内部接口",
+            "evidence": "intent.interfaces is [], architecture.interfaces includes sys_bus with data_width:32, addr_width:16"
+          },
+          {
+            "type": "code_gap",
+            "severity": "high",
+            "message": "生成代码仅为骨架，未实例化clock_generator和reset_controller子模块或实现sys_bus接口",
+            "evidence": "generated_code.content contains only TODO comments without module instantiation or functional implementation"
+          }
+        ],
+        "verified_at": "2026-02-28T21:18:25.387536+00:00",
+        "model": "deepseek-reasoner"
       }
     }
   ]

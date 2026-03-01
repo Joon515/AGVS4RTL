@@ -50,7 +50,7 @@ def cloud_api_smoke(require_cloud: bool = False) -> bool:
 
 def multi_agent_smoke() -> bool:
     """Run multi-agent pre-manager workflow smoke test."""
-    requirement = "设计一个带AXI4-Lite接口的32位寄存器文件，支持4KB地址空间，工作频率200MHz。"
+    requirement = "设计一个最简单的8位乘法器。"
     try:
         result = run_pre_manager_workflow(requirement, language="zh", source="smoke")
     except Exception as exc:
