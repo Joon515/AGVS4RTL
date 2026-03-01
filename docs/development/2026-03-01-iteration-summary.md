@@ -150,3 +150,87 @@
 - 立即在对应平台轮换该 Key。
 - 仅保留加密后的 `api_key_enc` 于配置文件。
 - 避免在终端历史、日志、Issue 中写入明文凭据。
+
+---
+
+## 8. 本轮对话增量改进（4-Agent 一致性专项）
+
+本节总结本轮对话中新增/调整的能力（在上文基础上的增量）。
+
+### 8.1 工作流重构为 4 Agent 主链
+
+主链从 `parser -> architect -> ppa_estimator -> codegen` 调整为：
+
+- `NLP(parser) -> Architect -> Codegen -> Verify`
+
+对应实现：
+- 新增 `VerifyAgent`：
+  - [app/manage_agent/verify_agent.py](app/manage_agent/verify_agent.py)
+- 工作流编排更新：
+  - [app/workflow.py](app/workflow.py)
+- 导出接口补齐：
+  - [app/manage_agent/__init__.py](app/manage_agent/__init__.py)
+
+### 8.2 状态与追踪增强（用于一致性判定）
+
+为支持“上游输出-下游输入完全一致”检查，新增/补齐：
+
+- `verification` 状态字段：
+  - [app/manage_agent/state_schema.py](app/manage_agent/state_schema.py)
+- 原始输入字段透传（避免 verify 看到空需求）：
+  - `natural_language` / `language` / `source`
+  - [app/manage_agent/state_schema.py](app/manage_agent/state_schema.py)
+  - [app/pre_agent/parser_agent.py](app/pre_agent/parser_agent.py)
+- 每阶段 `round_outputs` 增加 `input_snapshot`：
+  - [app/pre_agent/parser_agent.py](app/pre_agent/parser_agent.py)
+  - [app/manage_agent/architect_agent.py](app/manage_agent/architect_agent.py)
+  - [app/manage_agent/codegen_agent.py](app/manage_agent/codegen_agent.py)
+  - [app/manage_agent/verify_agent.py](app/manage_agent/verify_agent.py)
+
+### 8.3 一致性测试脚本体系
+
+新增完整一致性冒烟脚本（在线/离线）：
+- [app/test_four_agent_consistency_smoke.py](app/test_four_agent_consistency_smoke.py)
+
+新增 MVP 版本（保留语义精度与 verify 打分，不考察后端实现完整性）：
+- [app/test_four_agent_consistency_smoke_mvp.py](app/test_four_agent_consistency_smoke_mvp.py)
+
+当前 MVP 判定项：
+- `framework_minimal_valid`
+- `nlp_json_high_alignment`
+- `verify_score_gate`
+
+### 8.4 默认样例切换为“8位乘法器”
+
+本轮将常用 smoke/记录默认需求统一到“最简单的8位乘法器”，降低噪声并便于快速回归：
+
+- [app/test_four_agent_consistency_smoke.py](app/test_four_agent_consistency_smoke.py)
+- [app/test_dual_model_codegen_smoke.py](app/test_dual_model_codegen_smoke.py)
+- [app/test_cloud_multiagent_smoke.py](app/test_cloud_multiagent_smoke.py)
+- [app/generate_agent_round_records.py](app/generate_agent_round_records.py)
+- [app/model_behavior_probe.py](app/model_behavior_probe.py)
+
+### 8.5 单 Agent 记录不更新问题修复
+
+定位结论：
+- 记录脚本在线模式在模型调用阶段可能阻塞，导致“未执行到落盘”。
+
+修复措施：
+- 为记录脚本新增 `--result-json` 离线输入模式，保证可稳定生成记录：
+  - [app/generate_agent_round_records.py](app/generate_agent_round_records.py)
+
+验证：
+- 记录目录已产生新批次文件与 manifest（四个 Agent 子目录均更新）。
+
+### 8.6 本轮验证结论（8位乘法器）
+
+- 标准一致性脚本（非 MVP）可跑通，但更严格门槛下可能因 verify 分数/功能细节而不通过。
+- MVP 脚本已通过：
+  - [data/workspace/test_output/four_agent_consistency_smoke_mvp_8bit.json](data/workspace/test_output/four_agent_consistency_smoke_mvp_8bit.json)
+  - `overall_pass = true`
+
+### 8.7 下一步建议
+
+1. 将 `test_four_agent_consistency_smoke_mvp.py` 作为默认回归入口（CI 第一层）。
+2. 将严格版一致性脚本保留为夜间/发布前质量门（CI 第二层）。
+3. 后续再逐步提高 `verify_score_gate` 阈值，避免一次性引入过高门槛。
