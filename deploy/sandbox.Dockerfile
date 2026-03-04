@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y \
 
 # 安装验证相关的 Python 库
 RUN pip3 install --no-cache-dir --break-system-packages\
-    cocotb \
-    cocotb-test \
+    cocotb==1.8.1 \
+    cocotb-test==0.2.5 \
     pyuvm \
     pytest
 
