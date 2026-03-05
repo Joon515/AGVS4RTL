@@ -1,0 +1,14 @@
+{# generator/hdl_generation.j2 - placeholder #}
+{% extends "base.j2" %}
+
+{% block specific_instructions %}
+**任务**: 根据模块规范生成 HDL 代码。
+{% endblock %}
+
+{% block context %}
+{{ context | default('') }}
+{% endblock %}
+
+{% block output_format %}
+输出可综合 HDL 代码。
+{% endblock %}

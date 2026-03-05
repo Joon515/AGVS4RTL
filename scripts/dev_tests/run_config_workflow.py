@@ -5,9 +5,11 @@ import sys
 import json
 from pathlib import Path
 
-sys.path.insert(0, '/app/app')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from ui.config_store import ConfigStore
+from app.ui.config_store import ConfigStore
 
 
 def test_config_workflow():
@@ -16,7 +18,7 @@ def test_config_workflow():
     print("Testing Config Workflow (Save/Load/Encrypt)")
     print("=" * 60)
     
-    store = ConfigStore(workspace_root=Path("/app"))
+    store = ConfigStore(workspace_root=PROJECT_ROOT)
     
     # Load or create config
     config = store.load_config()

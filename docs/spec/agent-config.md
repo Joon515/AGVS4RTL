@@ -75,5 +75,5 @@
 
 - TUI: `app/ui/tui.py`
 - 配置加密: `app/ui/config_store.py`
-- 预处理: `app/pre_agent/stracture_request.py`
-- 测试: `app/ui/test_tui.py`, `app/ui/demo_tui.py`
+- 预处理: `app/pre_agent/structure_request.py`
+- 测试: `app/dev_tests/run_tui.py`, `app/dev_tests/run_tui_components.py`, `app/ui/demo_tui.py`

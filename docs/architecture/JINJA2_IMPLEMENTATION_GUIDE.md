@@ -364,7 +364,7 @@ async def test_parser_template_renders_correctly():
 
 import pytest
 from app.pre_agent.parser_agent import ParserAgent
-from app.pre_agent.stracture_request import PreprocessOutput
+from app.pre_agent.structure_request import PreprocessOutput
 
 @pytest.mark.asyncio
 async def test_end_to_end_parsing():

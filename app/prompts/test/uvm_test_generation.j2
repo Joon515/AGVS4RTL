@@ -1,0 +1,14 @@
+{# test/uvm_test_generation.j2 - placeholder #}
+{% extends "base.j2" %}
+
+{% block specific_instructions %}
+**任务**: 根据接口规范生成 UVM 测试框架。
+{% endblock %}
+
+{% block context %}
+{{ context | default('') }}
+{% endblock %}
+
+{% block output_format %}
+输出测试代码与配置 JSON。
+{% endblock %}

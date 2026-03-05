@@ -10,19 +10,20 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
-# Ensure project root import path when script is executed directly.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
 
 from app.test_agent.test_agent import TestAgent
 
 
 def main() -> int:
     """Run one integration scenario against sandbox runtime."""
-    workspace_root = Path("/app/data/workspace")
+    workspace_root = PROJECT_ROOT / "data" / "workspace"
     workspace_root.mkdir(parents=True, exist_ok=True)
 
     state = {

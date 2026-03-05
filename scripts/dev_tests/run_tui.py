@@ -9,15 +9,12 @@ import sys
 import json
 from pathlib import Path
 
-# Add parent directory to path to import sibling modules
-sys.path.insert(0, '/app/app')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-# Import from sibling directories
-import pre_agent
-import ui
-
-from pre_agent import Preprocessor, DesignIntent, StructuredConstraints
-from ui import TUIApp
+from app.pre_agent import DesignIntent, Preprocessor, StructuredConstraints
+from app.ui import TUIApp
 
 
 def test_preprocessor():
@@ -56,7 +53,7 @@ def test_tui_components():
     print("Testing TUI Components...")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     print("\n✅ TUIApp initialized successfully")
     print(f"   Workspace root: {app.workspace_root}")
     print(f"   Agent config keys: {list(app.agent_config.keys())}")
@@ -120,7 +117,7 @@ def main():
         print("=" * 60)
         
         # Save test output
-        output_dir = Path("/app/data/workspace/test_output")
+        output_dir = PROJECT_ROOT / "data" / "workspace" / "test_output"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = output_dir / "preprocessor_test.json"
         output_file.write_text(

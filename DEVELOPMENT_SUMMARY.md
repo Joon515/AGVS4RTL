@@ -17,7 +17,7 @@
 - ✅ **Architect Agent**: `app/manage_agent/architect_agent.py` - RAG增强架构设计
 - ✅ **PPA Estimator**: `app/manage_agent/ppa_estimator.py` - 规则引擎评估
 - ✅ **工作流编排**: `app/workflow.py` - LangGraph 集成
-- ✅ **测试套件**: `test_pre_manager_workflow.py` - 5项测试
+- ✅ **测试套件**: `app/dev_tests/run_pre_manager_workflow.py` - 5项测试
 - ✅ **知识库**: 2个设计模式文档（AXI-Lite、FIFO）
 
 ## 🔄 工作流架构
@@ -65,10 +65,10 @@ State: {ppa, feasibility, warnings}
 ### 运行测试
 ```bash
 # 完整测试套件（主机环境）
-python test_pre_manager_workflow.py
+python app/dev_tests/run_pre_manager_workflow.py
 
 # Docker 单元测试（推荐）
-docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
 
 # 工作流演示
 python app/workflow.py
@@ -84,10 +84,10 @@ python app/workflow.py
 - ✅ 端到端工作流集成
 - ✅ **Docker 容器化测试（8/8 通过）**
 
-### Docker 测试结果 (2024-02-14)
+### Docker 测试结果 (2026-02-14)
 
 ```bash
-$ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+$ docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
 
 ======================================================================
 📊 测试结果汇总
@@ -98,7 +98,7 @@ $ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
 🎉 所有测试通过！
 ```
 
-**测试详情**: 参见 [Docker 测试报告](docs/testing/TEST_RESULTS_2024-02-14.md)  
+**测试详情**: 参见 [Docker 测试报告](docs/testing/TEST_RESULTS_2026-02-14.md)  
 **测试指南**: 参见 [Docker 单元测试指南](docs/testing/docker-unit-tests.md)
 
 ## 📁 目录结构
@@ -111,7 +111,7 @@ app/
 │   ├── architect_agent.py     # 架构设计 + RAG
 │   └── ppa_estimator.py       # PPA 评估
 ├── pre_agent/
-│   ├── stracture_request.py   # 数据结构（已有）
+│   ├── structure_request.py   # 数据结构（已有）
 │   └── parser_agent.py        # Parser Agent
 ├── rag/
 │   ├── __init__.py
@@ -136,7 +136,7 @@ docs/
 └── rag/
     └── knowledge-base.md
 
-test_pre_manager_workflow.py  # 测试套件
+app/dev_tests/run_pre_manager_workflow.py  # 测试套件
 requirements.txt               # 更新：添加 chromadb, openai
 ```
 
@@ -269,7 +269,7 @@ state = {
 
 ---
 
-**交付时间**: 2024-02-14  
+**交付时间**: 2026-02-14  
 **开发模式**: 完全由 AI (GitHub Copilot) 完成  
 **代码质量**: 包含 docstring、类型注解、错误处理  
 **文档完备性**: 100% (规范 + 代码注释 + 测试 + Docker 测试指南)  

@@ -2,11 +2,15 @@
 """Test encryption/decryption functionality."""
 
 import sys
-from pathlib import Path
 
-sys.path.insert(0, '/app/app')
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
 
-from ui.config_store import ConfigStore
+PROJECT_ROOT = ensure_project_root()
+
+from app.ui.config_store import ConfigStore
 
 
 def test_encryption():
@@ -15,7 +19,7 @@ def test_encryption():
     print("Testing API Key Encryption")
     print("=" * 60)
     
-    store = ConfigStore(workspace_root=Path("/app"))
+    store = ConfigStore(workspace_root=PROJECT_ROOT)
     config = store.load_config()
     
     # Test API key
@@ -32,6 +36,9 @@ def test_encryption():
     
     # Decrypt
     decrypted = store.decrypt_api_key(encrypted, config)
+    if decrypted is None:
+        print("\n❌ Decryption returned None")
+        return False
     print(f"\n🔓 Decrypted API Key: {decrypted[:20]}...")
     
     # Verify

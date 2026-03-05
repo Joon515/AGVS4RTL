@@ -24,7 +24,7 @@
 - `app/test_agent/__init__.py`
 - `app/test_agent/test_agent.py`
 - `app/test_agent/test_unit_basic.py`
-- `app/test_agent/test_docker_integration.py`
+- `app/dev_tests/run_test_agent_docker_integration.py`
 
 ### 变更文件
 
@@ -64,7 +64,7 @@ PY
 **命令**
 
 ```bash
-timeout 300s docker compose exec -T agent-core python3 app/test_agent/test_docker_integration.py
+timeout 300s docker compose exec -T agent-core python3 app/dev_tests/run_test_agent_docker_integration.py
 ```
 
 **结果摘要**
