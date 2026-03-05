@@ -23,6 +23,7 @@ from app.manage_agent import (
     ppa_estimation_node,
 )
 from app.pre_agent.parser_agent import parse_requirement_node
+from app.test_agent import test_generation_node
 
 
 def create_pre_manager_workflow() -> StateGraph:
@@ -87,7 +88,7 @@ def create_manager_workflow() -> StateGraph:
     """Create workflow graph including Manager Agent.
 
     Workflow:
-        START → Parser → Architect → PPA Estimator → Manager → END
+        START → Parser → Architect → PPA Estimator → Manager → Test Generator → END
 
     Returns:
         Compiled StateGraph ready for execution
@@ -98,12 +99,14 @@ def create_manager_workflow() -> StateGraph:
     workflow.add_node("architect", architecture_design_node)
     workflow.add_node("ppa_estimator", ppa_estimation_node)
     workflow.add_node("manager", manager_orchestration_node)
+    workflow.add_node("test_generator", test_generation_node)
 
     workflow.set_entry_point("parser")
     workflow.add_edge("parser", "architect")
     workflow.add_edge("architect", "ppa_estimator")
     workflow.add_edge("ppa_estimator", "manager")
-    workflow.add_edge("manager", END)
+    workflow.add_edge("manager", "test_generator")
+    workflow.add_edge("test_generator", END)
 
     return workflow.compile()
 
@@ -113,7 +116,7 @@ def run_manager_workflow(
     language: str = "zh",
     source: str = "tui",
 ) -> Dict[str, Any]:
-    """Execute workflow through Manager stage.
+    """Execute workflow through Manager and Test stages.
 
     Args:
         natural_language: User's requirement text
@@ -121,7 +124,7 @@ def run_manager_workflow(
         source: Input source ("tui" or "api")
 
     Returns:
-        Final state with manager orchestration output
+        Final state with manager orchestration and static test output
     """
     workflow = create_manager_workflow()
     initial_state = {

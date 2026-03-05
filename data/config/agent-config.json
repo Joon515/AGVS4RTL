@@ -1,10 +1,11 @@
 {
   "agents": {
     "openai_agent": {
-      "model": "gpt-4",
+      "model": "Pro/zai-org/GLM-4.7",
+      "api_base": "https://api.siliconflow.cn/v1",
       "top_k": 5,
       "top_p": 0.9,
-      "temperature": 0.7,
+      "temperature": 0.1,
       "api_key_enc": {
         "key_id": "RSscnjC4iDgA",
         "encrypted_aes_key": "YgdpAjLWnnNF/6dbTjn94LyXT2yl4zY+Nte8qSNW6VpYosfPs+Eg7OvLUA6+A3fxaEHPACdE7xizwNC5a28OPsNBPl6hU6qpeatVbeq1C/A7IK38Cxe9K5KEQ2fnkl04lxwsrg0PCxRe1ijkMqHd9EAap7Z6GEGDJ0WRKC4C5qykjRtX/66qc5geu4/SHJP/9EqreXxQklG8+r4xK+xcAiPwM+/lmF3v7QQGnGjS5KVMcYmfFsq4/beKtGii7YcEKNgb3AnNcmgMldtmoW0mwEFLoKYckTzSgzOUi/Dnf7WpDgj1Ti9aEYK8BtiHyHSauVdbcfY8OCDv+mVykbYPQA==",

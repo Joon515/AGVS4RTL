@@ -5,10 +5,12 @@ import sys
 import json
 from pathlib import Path
 
-sys.path.insert(0, '/app/app')
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from ui.tui import TUIApp
-from ui.config_store import ConfigStore
+from app.ui.tui import TUIApp
+from app.ui.config_store import ConfigStore
 
 # Create sample tasks data
 sample_tasks = [
@@ -32,7 +34,7 @@ top_module
 
 def setup_demo_data():
     """Setup demo data files."""
-    workspace = Path("/app/data/workspace")
+    workspace = PROJECT_ROOT / "data" / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     
     # Save tasks
@@ -43,7 +45,7 @@ def setup_demo_data():
     arch_file = workspace / "architecture.txt"
     arch_file.write_text(sample_arch)
 
-    config_store = ConfigStore(Path("/app"))
+    config_store = ConfigStore(PROJECT_ROOT)
     config = config_store.load_config()
     config["loop"] = {"global_loop_budget": 3, "retry_count_max": 2}
     config["agents"] = {
@@ -109,7 +111,7 @@ def demo_dashboard_render():
     print("📊 TUI Dashboard Demo")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     
     # Render each component separately
     print("\n1️⃣  Tasks Table:")

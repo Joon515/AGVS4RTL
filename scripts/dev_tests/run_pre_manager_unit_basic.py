@@ -7,7 +7,7 @@ without requiring OpenAI API keys.
 import sys
 from pathlib import Path
 
-# Add project root to path (go up two levels from app/pre_agent/)
+# Add project root to path (go up two levels from scripts/dev_tests/)
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -66,7 +66,7 @@ def test_preprocessor():
     print("测试 2: Preprocessor 数据结构")
     print("=" * 70)
     
-    from app.pre_agent.stracture_request import Preprocessor
+    from app.pre_agent.structure_request import Preprocessor
     
     # Test from_text method
     result = Preprocessor.from_text(
@@ -372,7 +372,7 @@ def test_file_structure():
         "app/manage_agent/ppa_estimator.py",
         "app/manage_agent/__init__.py",
         "app/pre_agent/parser_agent.py",
-        "app/pre_agent/stracture_request.py",
+        "app/pre_agent/structure_request.py",
         "app/rag/vector_store.py",
         "app/rag/__init__.py",
         "app/workflow.py",

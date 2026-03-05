@@ -2,13 +2,16 @@
 """Test TUI initialization, menu structure, and input handling."""
 
 import sys
-from pathlib import Path
-from io import StringIO
 
-sys.path.insert(0, '/app/app')
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
 
-from ui.tui import TUIApp
-from pre_agent import Preprocessor
+PROJECT_ROOT = ensure_project_root()
+
+from app.ui.tui import TUIApp
+from app.pre_agent import Preprocessor
 
 
 def test_tui_initialization():
@@ -17,7 +20,7 @@ def test_tui_initialization():
     print("Testing TUI Initialization")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     
     print("\n✅ TUI App initialized")
     print(f"   Workspace: {app.workspace_root}")
@@ -100,7 +103,7 @@ def test_log_management():
     print("Testing Log Management")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     
     # Load logs
     logs = app._load_logs()
@@ -120,7 +123,7 @@ def test_architecture_display():
     print("Testing Architecture Display")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     
     arch = app._load_architecture()
     print(f"\n🏗️  Architecture content ({len(arch)} chars):")
@@ -135,7 +138,7 @@ def test_tasks_display():
     print("Testing Tasks Display")
     print("=" * 60)
     
-    app = TUIApp(workspace_root=Path("/app"))
+    app = TUIApp(workspace_root=PROJECT_ROOT)
     
     tasks = app._load_tasks()
     print(f"\n✅ Loaded {len(tasks)} tasks:")

@@ -2,15 +2,16 @@
 
 ## 概述
 
-本文档说明如何在 Docker 容器中运行 AGVS4RTL 的单元测试。测试套件 `app/pre_agent/test_unit_basic.py` 设计为无需 LLM API 密钥即可验证核心模块的结构和逻辑。
+本文档说明如何在 Docker 容器中运行 AGVS4RTL 的单元测试。开发脚本已统一至 `app/dev_tests/`，其中 `app/dev_tests/run_pre_manager_unit_basic.py` 设计为无需 LLM API 密钥即可验证核心模块的结构和逻辑。
 
 ## 测试范围
 
 ### 版本边界（当前版本）
 
-- 当前版本仅实现静态单元测试。
-- 非静态测试（依赖真实运行实例/容器交互）不在当前版本实现，计划在下一版本补齐。
-- 图结构测试（循环依赖、层次深度、孤立模块等）不在当前版本实现，计划在下一版本补齐。
+- 当前版本实现两类测试：
+   - 静态单元测试（Pre-Manager 阶段）
+   - TestAgent 模块级非静态执行测试（Verilator + pyuvm，Docker Sandbox）
+- 图结构测试（循环依赖、层次深度、孤立模块等）仍在下一版本补齐。
 - 下一版本相关能力落地时，结构化解析与验证仍采用 AST 方法，不使用 Regex 做模块层次与端口语义解析。
 
 ### 已覆盖模块（Pre-Manager Agent 阶段）
@@ -19,7 +20,7 @@
    - AGVSState TypedDict 12个字段验证
    - `create_initial_state()` 初始化逻辑
 
-2. **Preprocessor** (`app/pre_agent/stracture_request.py`)
+2. **Preprocessor** (`app/pre_agent/structure_request.py`)
    - RequestData 数据结构
    - `to_state()` 转换方法
 
@@ -54,6 +55,11 @@
 9. **File Structure**
    - 核心 Python 文件存在性验证
 
+10. **Test Agent（新增）**
+   - `app/test_agent/test_unit_basic.py`：测试模板与状态回写的单元验证
+   - `app/dev_tests/run_test_agent_docker_integration.py`：容器端到端执行验证
+   - 覆盖率产物链路：`coverage.dat -> *.info -> state.coverage`
+
 ## 运行测试
 
 ### 前置条件
@@ -71,7 +77,27 @@ docker compose ps
 
 在项目根目录运行：
 ```bash
-docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
+```
+
+TestAgent 单元测试（无 sandbox 依赖）：
+
+```bash
+docker compose exec -T agent-core python3 - <<'PY'
+from pathlib import Path
+import tempfile
+from app.test_agent.test_unit_basic import test_test_agent_generates_templates_and_state
+
+tmpdir = Path(tempfile.mkdtemp(prefix='agvs_test_agent_unit_'))
+test_test_agent_generates_templates_and_state(tmpdir)
+print('unit ok', tmpdir)
+PY
+```
+
+TestAgent 集成测试（真实 sandbox 执行）：
+
+```bash
+timeout 300s docker compose exec -T agent-core python3 app/dev_tests/run_test_agent_docker_integration.py
 ```
 
 ### 预期输出
@@ -171,7 +197,7 @@ ModuleNotFoundError: No module named 'xxx'
 
 ### 添加新测试
 
-在 `test_unit_basic.py` 的 `main()` 函数中注册：
+在 `app/dev_tests/run_pre_manager_unit_basic.py` 的 `main()` 函数中注册：
 ```python
 tests = [
     ("测试名称", test_function_name),
@@ -203,7 +229,7 @@ print(f"✅ {name} 测试通过")
 在 CI 流程中添加：
 ```yaml
 - name: Run Unit Tests
-  run: docker compose exec -T agent-core python3 app/pre_agent/test_unit_basic.py
+   run: docker compose exec -T agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
 ```
 
 ### 退出码
@@ -218,9 +244,11 @@ print(f"✅ {name} 测试通过")
 - [PPA 报告格式](../ppa/report-format.md)
 - [RAG 知识库配置](../rag/knowledge-base.md)
 - [Docker 部署指南](../deploy/docker-compose.md)
+- [TestAgent 阶段测试报告（2026-03-04）](./TEST_RESULTS_2026-03-04.md)
 
 ## 版本历史
 
 - **2024-02-14**: 初始版本，8个单元测试，无 LLM 依赖设计
 - **2026-02-22**: 增加 Manager Agent 静态编排测试，更新为9个单元测试
+- **2026-03-04**: 增加 TestAgent Docker 集成测试，支持 Verilator/pyuvm 非静态执行与覆盖率回写
 - 测试覆盖: State Schema, Preprocessor, PPA Estimator, RAG, Parser Agent, Architect Agent, Workflow, Manager Agent, File Structure

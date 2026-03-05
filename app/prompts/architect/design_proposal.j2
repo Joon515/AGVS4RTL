@@ -1,0 +1,80 @@
+{#
+  模板: architect/design_proposal.j2
+  用途: 生成架构设计系统提示词
+  变量:
+    - similar_designs (str): RAG 检索到的参考设计文本
+  输出: 架构设计 JSON 指令
+#}
+{% extends "base.j2" %}
+
+{% block specific_instructions %}
+**任务：**
+根据设计意图和约束，生成模块层次树（Hierarchy Tree）、端口规范和接口定义。
+
+**设计原则：**
+1. **层次化设计**：
+   - 顶层模块 (top): 包含所有外部接口
+   - 中间层模块 (mid): 组合多个子模块
+   - 叶子模块 (leaf): 不包含子模块的基本单元
+
+2. **模块命名**：
+   - 使用小写蛇形命名法: `axi_slave`, `fifo_controller`
+   - 体现功能: `write_channel`, `address_decoder`
+   - 避免过于泛化的名称
+
+3. **端口规范**：
+   - 时钟: `clk`, `clk_<domain>`
+   - 复位: `rst_n` (低电平有效), `rst` (高电平有效)
+   - 接口前缀: AXI-Lite Slave: `s_axi_*`, Master: `m_axi_*`
+   - 信号后缀: `_valid`, `_ready`, `_data`, `_addr`
+
+4. **接口定义**：
+   - 使用标准协议: AXI4-Lite, AXI-Stream, APB等
+   - 明确数据位宽和地址位宽
+   - 包含所有必需的握手信号
+{% endblock %}
+
+{% block context %}
+**参考设计模式：**
+{{ similar_designs if similar_designs else '（无可用参考设计）' }}
+{% endblock %}
+
+{% block output_format %}
+**输出格式：**
+返回 JSON 格式的架构定义：
+```json
+{
+  "version": 1,
+  "hierarchy": {
+    "top": {
+      "name": "module_name",
+      "type": "top",
+      "description": "模块描述",
+      "children": ["child1", "child2"],
+      "ports": {
+        "clk": {"type": "input", "width": 1, "description": "系统时钟"},
+        "rst_n": {"type": "input", "width": 1, "description": "异步复位"}
+      }
+    },
+    "modules": [
+      {
+        "name": "child1",
+        "type": "leaf",
+        "description": "子模块描述",
+        "ports": {},
+        "parameters": {}
+      }
+    ]
+  },
+  "interfaces": [
+    {
+      "name": "s_axi",
+      "protocol": "AXI4-Lite",
+      "mode": "slave",
+      "data_width": 32,
+      "addr_width": 12
+    }
+  ]
+}
+```
+{% endblock %}

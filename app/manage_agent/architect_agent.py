@@ -15,81 +15,12 @@ from typing import Any, Dict, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from ..prompts.loader import PromptLoader
 from ..rag.vector_store import KnowledgeLoader
 
 
 class ArchitectAgent:
     """RAG-enhanced architecture design agent."""
-    
-    # System prompt for architecture design
-    SYSTEM_PROMPT = """你是一个硬件架构设计专家，擅长将高层需求转换为分层次的HDL模块结构。
-
-**任务：**
-根据设计意图和约束，生成模块层次树（Hierarchy Tree）、端口规范和接口定义。
-
-**设计原则：**
-1. **层次化设计**：
-   - 顶层模块 (top): 包含所有外部接口
-   - 中间层模块 (mid): 组合多个子模块
-   - 叶子模块 (leaf): 不包含子模块的基本单元
-
-2. **模块命名**：
-   - 使用小写蛇形命名法: `axi_slave`, `fifo_controller`
-   - 体现功能: `write_channel`, `address_decoder`
-   - 避免过于泛化的名称
-
-3. **端口规范**：
-   - 时钟: `clk`, `clk_<domain>`
-   - 复位: `rst_n` (低电平有效), `rst` (高电平有效)
-   - 接口前缀: AXI-Lite Slave: `s_axi_*`, Master: `m_axi_*`
-   - 信号后缀: `_valid`, `_ready`, `_data`, `_addr`
-
-4. **接口定义**：
-   - 使用标准协议: AXI4-Lite, AXI-Stream, APB等
-   - 明确数据位宽和地址位宽
-   - 包含所有必需的握手信号
-
-**参考设计模式：**
-{similar_designs}
-
-**输出格式：**
-返回JSON格式的架构定义：
-```json
-{{
-  "version": 1,
-  "hierarchy": {{
-    "top": {{
-      "name": "module_name",
-      "type": "top",
-      "description": "模块描述",
-      "children": ["child1", "child2"],
-      "ports": {{
-        "clk": {{"type": "input", "width": 1, "description": "系统时钟"}},
-        "rst_n": {{"type": "input", "width": 1, "description": "异步复位"}}
-      }}
-    }},
-    "modules": [
-      {{
-        "name": "child1",
-        "type": "leaf",
-        "description": "子模块描述",
-        "ports": {{}},
-        "parameters": {{}}
-      }}
-    ]
-  }},
-  "interfaces": [
-    {{
-      "name": "s_axi",
-      "protocol": "AXI4-Lite",
-      "mode": "slave",
-      "data_width": 32,
-      "addr_width": 12
-    }}
-  ]
-}}
-```
-"""
     
     def __init__(
         self,
@@ -98,6 +29,8 @@ class ArchitectAgent:
         api_key: Optional[str] = None,
         rag_persist_dir: str = "data/rag/vector_db",
         use_rag: bool = True,
+        llm: Optional[Any] = None,
+        prompt_loader: Optional[PromptLoader] = None,
     ):
         """Initialize Architect Agent.
         
@@ -107,17 +40,20 @@ class ArchitectAgent:
             api_key: OpenAI API key
             rag_persist_dir: RAG vector database directory
             use_rag: Whether to use RAG for design pattern retrieval
+            llm: Optional injected LLM-compatible client for testing
+            prompt_loader: Optional injected prompt loader
         """
         self.model_name = model_name
         self.temperature = temperature
         self.use_rag = use_rag
         
         # Initialize LLM
-        self.llm = ChatOpenAI(
+        self.llm = llm or ChatOpenAI(
             model=model_name,
             temperature=temperature,
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
         )
+        self.prompt_loader = prompt_loader or PromptLoader()
         
         # Initialize RAG if enabled
         self.rag_loader = None
@@ -155,10 +91,13 @@ class ArchitectAgent:
         prompt = self._build_prompt(intent, constraints, similar_designs)
         
         # Step 3: Call LLM
+        system_prompt = self.prompt_loader.render(
+            "architect/design_proposal.j2",
+            similar_designs=similar_designs,
+        )
+
         messages = [
-            SystemMessage(content=self.SYSTEM_PROMPT.format(
-                similar_designs=similar_designs or "（无可用参考设计）"
-            )),
+            SystemMessage(content=system_prompt),
             HumanMessage(content=prompt),
         ]
         
@@ -254,27 +193,23 @@ class ArchitectAgent:
             for c in constraints.get("soft", [])
         )
         
-        prompt = f"""请为以下需求设计模块架构：
-
-**需求摘要**: {intent.get('summary', '')}
-
-**目标HDL语言**: {intent.get('target_language', 'verilog')}
-
-**时钟与复位**:
-- 时钟: {intent.get('clock', 'clk')}
-- 复位: {intent.get('reset', 'rst_n')}
-
-**接口协议**: {', '.join(intent.get('interfaces', [])) or '无'}
-
-**硬约束**:
-{hard_constraints_str or '  无'}
-
-**软约束（优化目标）**:
-{soft_constraints_str or '  无'}
-
-请生成完整的模块层次结构、端口定义和接口规范（JSON格式）。
-"""
-        return prompt
+        return self.prompt_loader.render(
+            "architect/module_decomposition.j2",
+            context=(
+                "请为以下需求设计模块架构：\n\n"
+                f"**需求摘要**: {intent.get('summary', '')}\n\n"
+                f"**目标HDL语言**: {intent.get('target_language', 'verilog')}\n\n"
+                "**时钟与复位**:\n"
+                f"- 时钟: {intent.get('clock', 'clk')}\n"
+                f"- 复位: {intent.get('reset', 'rst_n')}\n\n"
+                f"**接口协议**: {', '.join(intent.get('interfaces', [])) or '无'}\n\n"
+                "**硬约束**:\n"
+                f"{hard_constraints_str or '  无'}\n\n"
+                "**软约束（优化目标）**:\n"
+                f"{soft_constraints_str or '  无'}\n\n"
+                "请生成完整的模块层次结构、端口定义和接口规范（JSON格式）。"
+            ),
+        )
     
     def _parse_llm_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM JSON response.

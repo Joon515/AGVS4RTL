@@ -35,7 +35,7 @@ class KeyPair:
 
 
 class ConfigStore:
-    """Persist agent config with PQC-encrypted API keys."""
+    """Persist agent config with encrypted API keys."""
 
     def __init__(self, workspace_root: Path) -> None:
         self.workspace_root = workspace_root

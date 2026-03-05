@@ -6,11 +6,13 @@ This script tests the complete workflow from Parser Agent to PPA Estimator.
 import json
 import os
 import sys
-from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
 
 
 def test_parser_agent():
@@ -234,7 +236,7 @@ def test_complete_workflow():
 def save_results(result, output_file="test_results.json"):
     """Save test results to file."""
     if result:
-        output_path = Path("data/workspace") / output_file
+        output_path = PROJECT_ROOT / "data" / "workspace" / output_file
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         with open(output_path, "w", encoding="utf-8") as f:

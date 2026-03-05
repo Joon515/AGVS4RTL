@@ -13,9 +13,11 @@ from typing import Any, Dict, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from ..pre_agent.stracture_request import (
+from ..prompts.loader import PromptLoader
+from .structure_request import (
     Constraint,
     DesignIntent,
+    NaturalLanguageRequest,
     PreprocessOutput,
     StructuredConstraints,
 )
@@ -24,57 +26,13 @@ from ..pre_agent.stracture_request import (
 class ParserAgent:
     """LLM-powered parser for HDL requirement extraction."""
     
-    # System prompt for requirement parsing
-    SYSTEM_PROMPT = """你是一个专业的硬件设计需求分析专家。你的任务是从自然语言需求中提取结构化的设计意图和约束条件。
-
-**分析要点:**
-1. **设计意图 (Design Intent)**:
-   - 核心功能摘要
-   - 目标HDL语言 (Verilog/SystemVerilog/VHDL)
-   - 时钟信号名称
-   - 复位信号名称（注意低电平有效 rst_n vs 高电平有效 rst）
-   - 接口协议关键词 (AXI, APB, AXI-Stream, UART, SPI等)
-
-2. **约束条件 (Constraints)**:
-   - **硬约束 (Hard)**: 必须满足的要求（频率、数据位宽、地址位宽等）
-   - **软约束 (Soft)**: 优化目标（面积最小化、功耗最小化等）
-
-**输出格式:**
-返回 JSON 格式，包含以下字段：
-```json
-{
-  "intent": {
-    "summary": "功能摘要",
-    "target_language": "verilog",
-    "clock": "clk",
-    "reset": "rst_n",
-    "interfaces": ["axi-lite", "apb"]
-  },
-  "constraints": {
-    "hard": [
-      {"name": "freq", "value": "200MHz"},
-      {"name": "data_width", "value": 32}
-    ],
-    "soft": [
-      {"name": "area", "value": "minimize"},
-      {"name": "power", "value": "low"}
-    ]
-  }
-}
-```
-
-**注意事项:**
-- 如果用户未明确指定，使用合理默认值
-- 频率单位统一为 MHz
-- 数据位宽统一为整数
-- 接口名称使用标准协议名（小写，用连字符）
-"""
-    
     def __init__(
         self,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.1,
         api_key: Optional[str] = None,
+        llm: Optional[Any] = None,
+        prompt_loader: Optional[PromptLoader] = None,
     ):
         """Initialize Parser Agent.
         
@@ -82,16 +40,19 @@ class ParserAgent:
             model_name: OpenAI model name
             temperature: LLM temperature (lower = more deterministic)
             api_key: OpenAI API key (or use OPENAI_API_KEY env var)
+            llm: Optional injected LLM-compatible client for testing
+            prompt_loader: Optional injected prompt loader
         """
         self.model_name = model_name
         self.temperature = temperature
         
         # Initialize LLM
-        self.llm = ChatOpenAI(
+        self.llm = llm or ChatOpenAI(
             model=model_name,
             temperature=temperature,
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
         )
+        self.prompt_loader = prompt_loader or PromptLoader()
     
     def parse(
         self,
@@ -109,9 +70,16 @@ class ParserAgent:
         Returns:
             PreprocessOutput with structured intent and constraints
         """
-        # Construct prompt
+        # Construct prompt from template
+        system_prompt = self.prompt_loader.render(
+            "parser/extract_intent.j2",
+            requirement=natural_language,
+            target_language="verilog",
+            examples=self._get_few_shot_examples(),
+        )
+
         messages = [
-            SystemMessage(content=self.SYSTEM_PROMPT),
+            SystemMessage(content=system_prompt),
             HumanMessage(content=f"请分析以下需求：\n\n{natural_language}"),
         ]
         
@@ -126,11 +94,6 @@ class ParserAgent:
             parsed = self._fallback_parse(natural_language)
         
         # Create PreprocessOutput
-        from ..pre_agent.stracture_request import (
-            NaturalLanguageRequest,
-            Preprocessor,
-        )
-        
         raw = NaturalLanguageRequest(
             text=natural_language,
             language=language,
@@ -152,6 +115,32 @@ class ParserAgent:
         )
         
         return output
+
+    def _get_few_shot_examples(self) -> List[Dict[str, Any]]:
+        """Return built-in few-shot examples for parser prompt.
+
+        Returns:
+            Few-shot examples that reinforce output structure.
+        """
+        return [
+            {
+                "description": "AXI-Lite 寄存器文件",
+                "requirement": "实现一个带AXI-Lite接口的寄存器文件",
+                "result": {
+                    "intent": {
+                        "summary": "实现一个带AXI-Lite接口的寄存器文件",
+                        "target_language": "verilog",
+                        "clock": "clk",
+                        "reset": "rst_n",
+                        "interfaces": ["axi-lite"],
+                    },
+                    "constraints": {
+                        "hard": [],
+                        "soft": [{"name": "area", "value": "minimize"}],
+                    },
+                },
+            }
+        ]
     
     def _parse_llm_response(self, response: str) -> Dict[str, Any]:
         """Parse LLM JSON response.
