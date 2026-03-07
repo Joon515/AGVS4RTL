@@ -1,4 +1,4 @@
-"""Management agent module containing architecture and PPA estimation agents."""
+"""Management agent module containing architecture, PPA, and manager agents."""
 
 from .architect_agent import ArchitectAgent, architecture_design_node
 from .codegen_agent import CodegenAgent, codegen_framework_node

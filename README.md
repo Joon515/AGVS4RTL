@@ -5,12 +5,10 @@ AGVS4RTL 是一个面向 RTL 自动生成与一致性验证的多 Agent 系统�
 
 ## 核心能力
 
-- 多 Agent 主链：`NLP(Parser) -> Architect -> Codegen -> Verify`
-- LangGraph 状态编排：统一状态在 `app/manage_agent/state_schema.py`
-- RAG 增强架构设计：支持从 `data/rag/knowledge_docs` 检索设计模式
-- 结果追踪：`round_outputs` 记录每个阶段输入快照与输出
-- 冒烟测试：提供严格版和 MVP 版 4-Agent 一致性脚本
-- Rich TUI：支持需求输入、日志查看、配置管理
+- 预处理数据结构：标准化自然语言需求与约束输出
+- Rich TUI 仪表盘：日志入口、输入框、任务列表、参数配置、模块架构图
+- Agent 配置中心：每个 agent 的模型参数与 loop 预算
+- API Key 强制 TUI 输入并使用 RSA-OAEP + AES-GCM 混合加密存储
 
 ## 工作流概览
 

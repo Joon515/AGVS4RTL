@@ -1,0 +1,75 @@
+{#
+  模板: parser/extract_intent.j2
+  用途: 需求解析与结构化提取
+  变量:
+    - requirement (str): 用户输入自然语言需求
+    - target_language (str): 目标 HDL 语言，默认 verilog
+    - examples (list, optional): few-shot 示例
+  输出: PreprocessOutput 兼容 JSON
+#}
+{% extends "base.j2" %}
+
+{% block specific_instructions %}
+**任务**: 从自然语言需求中提取结构化的设计意图和约束条件
+
+**分析要点:**
+1. **设计意图 (Design Intent)**:
+   - 核心功能摘要
+   - 目标HDL语言 (Verilog/SystemVerilog/VHDL)
+   - 时钟信号名称
+   - 复位信号名称（注意低电平有效 rst_n vs 高电平有效 rst）
+   - 接口协议关键词 (AXI, APB, AXI-Stream, UART, SPI等)
+
+2. **约束条件 (Constraints)**:
+   - **硬约束 (Hard)**: 必须满足的要求（频率、数据位宽、地址位宽等）
+   - **软约束 (Soft)**: 优化目标（面积最小化、功耗最小化等）
+{% endblock %}
+
+{% block context %}
+**用户需求:**
+{{ requirement }}
+
+{% if examples %}
+**参考示例:**
+{% for example in examples %}
+{{ loop.index }}. **{{ example.description }}**
+   需求: {{ example.requirement }}
+   提取结果: {{ example.result | json_format }}
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block output_format %}
+**输出格式 (纯 JSON，无其他文字):**
+```json
+{
+  "intent": {
+    "summary": "功能摘要，保留原始语义",
+    "target_language": "{{ target_language | default('verilog') }}",
+    "clock": "clk",
+    "reset": "rst_n",
+    "interfaces": ["接口协议关键词列表"]
+  },
+  "constraints": {
+    "hard": [
+      {
+        "name": "freq|data_width|address_width",
+        "value": "约束值"
+      }
+    ],
+    "soft": [
+      {
+        "name": "area|power|latency",
+        "value": "minimize|low|target"
+      }
+    ]
+  }
+}
+```
+
+**重要提示:**
+- 如果需求中未明确提及某些字段，使用 `null` 或空列表
+- `summary` 必须保留用户的原始需求语义
+- 接口协议关键词全部小写，使用连字符 (如 "axi-lite")
+- 约束字段使用现有系统格式：`name`, `value`
+{% endblock %}

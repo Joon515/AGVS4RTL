@@ -1,6 +1,6 @@
 # AGVS4RTL Pre-Manager Agent 开发测试报告
 
-**日期**: 2024-02-14  
+**日期**: 2026-02-14  
 **测试范围**: Parser Agent, Architect Agent, PPA Estimator, RAG Module, State Schema, Workflow  
 **测试环境**: Docker (hdl_agent_core 容器)
 
@@ -25,7 +25,7 @@
 ### 测试执行记录
 
 ```bash
-$ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+$ docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
 
 ======================================================================
 📊 测试结果汇总
@@ -59,7 +59,7 @@ $ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
 
 #### ✅ Test 2: Preprocessor 数据结构
 
-**模块**: `app/pre_agent/stracture_request.py`
+**模块**: `app/pre_agent/structure_request.py`
 
 **验证点**:
 - RequestData 类正确解析用户输入
@@ -214,7 +214,7 @@ START → parser → architect → ppa_estimator → END
 2. `app/manage_agent/architect_agent.py`
 3. `app/manage_agent/ppa_estimator.py`
 4. `app/pre_agent/parser_agent.py`
-5. `app/pre_agent/stracture_request.py`
+5. `app/pre_agent/structure_request.py`
 6. `app/rag/vector_store.py`
 7. `app/workflow.py`
 8. `app/manage_agent/__init__.py`
@@ -344,7 +344,7 @@ def test_file_structure():
 **建议**:
 ```bash
 pip install pytest-cov
-pytest app/pre_agent/test_unit_basic.py --cov=app --cov-report=html
+pytest app/dev_tests/run_pre_manager_unit_basic.py --cov=app --cov-report=html
 ```
 
 **目标**: 90% 代码覆盖率
@@ -455,7 +455,7 @@ pytest app/pre_agent/test_unit_basic.py --cov=app --cov-report=html
 docker compose up -d
 
 # 运行测试
-docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
+docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
 
 # 查看容器日志
 docker compose logs agent-core
@@ -485,6 +485,6 @@ pydantic: 2.5.0+
 
 ---
 
-**报告生成时间**: 2024-02-14  
+**报告生成时间**: 2026-02-14  
 **测试执行者**: AGVS4RTL Development Team  
 **审核状态**: ✅ 通过

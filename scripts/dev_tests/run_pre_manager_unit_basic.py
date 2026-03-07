@@ -7,7 +7,7 @@ without requiring OpenAI API keys.
 import sys
 from pathlib import Path
 
-# Add project root to path (go up two levels from app/pre_agent/)
+# Add project root to path (go up two levels from scripts/dev_tests/)
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -66,7 +66,7 @@ def test_preprocessor():
     print("测试 2: Preprocessor 数据结构")
     print("=" * 70)
     
-    from app.pre_agent.stracture_request import Preprocessor
+    from app.pre_agent.structure_request import Preprocessor
     
     # Test from_text method
     result = Preprocessor.from_text(
@@ -286,7 +286,7 @@ def test_workflow_structure():
     print("测试 7: Workflow 工作流结构")
     print("=" * 70)
     
-    from app.workflow import create_pre_manager_workflow
+    from app.workflow import create_manager_workflow, create_pre_manager_workflow
     
     # Create workflow graph
     workflow = create_pre_manager_workflow()
@@ -294,24 +294,85 @@ def test_workflow_structure():
     print("\n✅ Workflow 创建成功")
     print("  - 工作流图已编译")
     print("  - 包含节点: parser, architect, ppa_estimator")
+
+    manager_workflow = create_manager_workflow()
+    assert manager_workflow is not None
+    print("  - 扩展节点: manager")
     
+    return True
+
+
+def test_manager_agent_structure():
+    """Test Manager Agent static orchestration behavior."""
+    print("\n" + "=" * 70)
+    print("测试 8: Manager Agent 静态编排")
+    print("=" * 70)
+
+    from app.manage_agent.manager_agent import ManagerAgent
+
+    manager = ManagerAgent()
+
+    state = {
+        "architecture": {
+            "hierarchy": {
+                "top": {
+                    "name": "axi_register_file",
+                    "type": "top",
+                    "children": ["axi_slave", "reg_array"],
+                },
+                "modules": [
+                    {"name": "axi_slave", "type": "leaf"},
+                    {"name": "reg_array", "type": "leaf"},
+                ],
+            }
+        },
+        "ppa": {"feasibility": "high"},
+        "retry_count": {"global": 0},
+        "loop_budget": {
+            "max_iterations": 10,
+            "current_iteration": 0,
+            "remaining": 10,
+        },
+        "errors": [],
+        "ast_extraction": {"status": "success"},
+    }
+
+    update = manager.orchestrate(state)
+
+    assert "modules" in update
+    assert "tests" in update
+    assert "retry_count" in update
+    assert "loop_budget" in update
+    assert "architecture_validation" in update
+    assert "manager" in update
+
+    summary = update["manager"]
+    assert summary["status"] in ["ready_for_generation", "all_modules_settled"]
+    assert isinstance(summary["execution_plan"], list)
+
+    print("\n✅ Manager Agent 结构测试通过")
+    print(f"  - 管理状态: {summary['status']}")
+    print(f"  - 下一模块: {summary.get('next_module')}")
+    print(f"  - 计划长度: {len(summary['execution_plan'])}")
+
     return True
 
 
 def test_file_structure():
     """Test project file structure."""
     print("\n" + "=" * 70)
-    print("测试 8: 项目文件结构完整性")
+    print("测试 9: 项目文件结构完整性")
     print("=" * 70)
     
     # Only check files that should be in /app mount (app/ directory)
     required_files = [
         "app/manage_agent/state_schema.py",
         "app/manage_agent/architect_agent.py",
+        "app/manage_agent/manager_agent.py",
         "app/manage_agent/ppa_estimator.py",
         "app/manage_agent/__init__.py",
         "app/pre_agent/parser_agent.py",
-        "app/pre_agent/stracture_request.py",
+        "app/pre_agent/structure_request.py",
         "app/rag/vector_store.py",
         "app/rag/__init__.py",
         "app/workflow.py",
@@ -348,6 +409,7 @@ def main():
         ("Parser Agent", test_parser_agent_structure),
         ("Architect Agent", test_architect_agent_structure),
         ("Workflow", test_workflow_structure),
+        ("Manager Agent", test_manager_agent_structure),
         ("File Structure", test_file_structure),
     ]
     

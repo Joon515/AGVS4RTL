@@ -1,6 +1,6 @@
 """Pre-agent package for request normalization."""
 
-from .stracture_request import (
+from .structure_request import (
     Constraint,
     DesignIntent,
     NaturalLanguageRequest,

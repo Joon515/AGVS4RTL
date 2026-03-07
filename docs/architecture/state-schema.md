@@ -10,6 +10,8 @@
 | constraints | object | 结构化约束集合（硬/软） | Parser Agent |
 | metadata | object | 请求元数据（时间戳、请求ID等） | Parser Agent |
 | architecture | object | 模块层次结构与端口规范 | Architect Agent |
+| ast_extraction | object | AST 提取结果（可选，基于已有 HDL） | Architect Agent |
+| architecture_validation | object | 架构图验证结果（循环依赖/深度/孤立模块） | Architect Agent/Manager |
 | ppa | object | PPA 评估结果与目标 | PPA Estimator |
 | coverage | object | 覆盖率结果与阈值 | Coverage Analyzer |
 | errors | list | 结构化错误报告 | Analyzer |
@@ -18,6 +20,7 @@
 | versions | list | 版本迭代记录 | Architect/Manager |
 | modules | dict | 模块生成状态与代码路径 | GenAgent |
 | tests | dict | 测试用例生成状态 | TestAgent |
+| manager | object | Manager 编排摘要（下一模块/计划/状态） | Manager |
 
 ## 字段详细定义
 
@@ -137,6 +140,53 @@
 }
 ```
 
+### 5a. ast_extraction（AST提取结果，可选）
+
+用于“基于已有 HDL 迭代设计”场景，记录 AST 提取出的结构化信息。
+
+```json
+{
+  "source_files": [
+    "workspace/hierarchy/top/design_top.v"
+  ],
+  "modules": [
+    {
+      "name": "design_top",
+      "ports": ["clk", "rst_n", "s_axi_awaddr"],
+      "parameters": ["DATA_WIDTH", "ADDR_WIDTH"],
+      "instances": ["axi_slave", "reg_array"]
+    }
+  ],
+  "features": {
+    "interface_types": ["axi4-lite"],
+    "hierarchy_depth": 2,
+    "is_parameterized": true
+  },
+  "status": "success",
+  "errors": []
+}
+```
+
+### 5b. architecture_validation（架构图验证）
+
+对 `architecture.hierarchy` 执行图论验证，避免将 AST 用于 JSON 一致性校验。
+
+> 版本说明：当前版本不实现图结构测试与非静态测试；上述验证结构作为下一版本落地目标保留。下一版本实现时，结构化解析与验证输入仍采用 AST 方法，不使用 Regex 做语义解析。
+
+```json
+{
+  "graph_checks": {
+    "has_cycle": false,
+    "max_depth": 2,
+    "orphan_modules": [],
+    "unresolved_references": []
+  },
+  "status": "pass",
+  "warnings": [],
+  "checked_at": "2026-02-22T10:40:00+08:00"
+}
+```
+
 ### 6. coverage（覆盖率）
 
 由 Coverage Analyzer 填写
@@ -168,7 +218,7 @@
 
 ### 7. errors（错误报告）
 
-结构化错误列表，详细格式见 [docs/verification/error-report.md](../verification/error-report.md)
+结构化错误列表，详细格式见 [docs/testing/error-report.md](../testing/error-report.md)
 
 ```json
 [
@@ -274,6 +324,20 @@
 }
 ```
 
+### 13. manager（编排摘要）
+
+由 Manager Agent 填写，用于记录当前编排状态与下一步动作。
+
+```json
+{
+  "status": "ready_for_generation",
+  "next_module": "axi_slave",
+  "execution_plan": ["axi_slave", "reg_array", "axi_register_file"],
+  "updated_at": "2026-02-22T12:10:00+08:00",
+  "version_scope": "static_only_v1"
+}
+```
+
 ## TypedDict 定义（Python）
 
 完整的 State Schema 在代码中定义为：
@@ -291,6 +355,8 @@ class AGVSState(TypedDict, total=False):
     
     # Architecture stage
     architecture: Dict[str, Any]
+    ast_extraction: Dict[str, Any]
+    architecture_validation: Dict[str, Any]
     ppa: Dict[str, Any]
     
     # Verification stage
@@ -305,6 +371,7 @@ class AGVSState(TypedDict, total=False):
     # Generation stage
     modules: Dict[str, Dict[str, Any]]
     tests: Dict[str, Dict[str, Any]]
+    manager: Dict[str, Any]
 ```
 
 ## 相关规范文档
@@ -312,6 +379,6 @@ class AGVSState(TypedDict, total=False):
 - [设计意图规范](../spec/design-intent.md)
 - [端口与层次结构规范](../spec/ports-and-hierarchy.md)
 - [PPA 报告格式](../ppa/report-format.md)
-- [覆盖率报告格式](../verification/coverage-report.md)
-- [错误报告格式](../verification/error-report.md)
+- [覆盖率报告格式](../testing/coverage-report.md)
+- [错误报告格式](../testing/error-report.md)
 - [Agent 配置规范](../spec/agent-config.md)

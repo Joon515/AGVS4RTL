@@ -12,8 +12,12 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from pre_agent import Preprocessor
-from ui.config_store import ConfigStore
+try:
+    from app.pre_agent import Preprocessor
+    from app.ui.config_store import ConfigStore
+except ImportError:  # pragma: no cover - legacy path fallback
+    from pre_agent import Preprocessor
+    from ui.config_store import ConfigStore
 
 
 STATUS_ICON = {

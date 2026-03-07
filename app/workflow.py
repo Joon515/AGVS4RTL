@@ -20,10 +20,12 @@ from app.manage_agent import (
     architecture_design_node,
     codegen_framework_node,
     create_initial_state,
+    manager_orchestration_node,
     ppa_estimation_node,
     verify_consistency_node,
 )
 from app.pre_agent.parser_agent import parse_requirement_node
+from app.test_agent import test_generation_node
 
 
 def create_pre_manager_workflow() -> StateGraph:

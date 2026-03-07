@@ -1,0 +1,5 @@
+# Development dependencies
+-r requirements.txt
+
+# Test framework
+pytest>=9.0.0
