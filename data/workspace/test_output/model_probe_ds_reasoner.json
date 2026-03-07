@@ -1,0 +1,32 @@
+{
+  "tag": "ds_reasoner",
+  "timestamp": "2026-02-28T17:23:29.898090+00:00",
+  "model": "deepseek-reasoner",
+  "api_base": "https://api.deepseek.com",
+  "cases": [
+    {
+      "id": "json_parse",
+      "ok": true,
+      "latency_ms": 14599.64,
+      "output_len": 210,
+      "output_preview": "{\n  \"summary\": \"设计一个AXI-Lite 32位寄存器文件，运行在200MHz时钟频率。\",\n  \"interfaces\": [\n    {\n      \"protocol\": \"AXI-Lite\",\n      \"data_width\": 32,\n      \"clock_frequency\": \"200MHz\",\n      \"description\": \"寄存器文件接口\"\n    }\n  ]\n}",
+      "error": null
+    },
+    {
+      "id": "arch_plan",
+      "ok": true,
+      "latency_ms": 95179.04,
+      "output_len": 898,
+      "output_preview": "基于AXI-Lite寄存器文件的三层模块规划如下：\n\n## 顶层（Top Layer，1个模块）\n### 模块：axi_lite_top\n- **功能**：系统级集成与时钟复位管理\n- 包含AXI-Lite主接口到系统的连接\n- 时钟域和复位同步逻辑\n- 顶层寄存器地址空间分配\n- 中断请求（IRQ）汇总与输出\n\n## 中层（Mid Layer，2-3个模块）\n### 模块1：reg_decoder\n- **功能**：地址译码与片选生成\n- 将32位AXI地址译码为不同寄存器",
+      "error": null
+    },
+    {
+      "id": "verification",
+      "ok": true,
+      "latency_ms": 7660.6,
+      "output_len": 117,
+      "output_preview": "1. 验证向特定地址写入数据后，立即从该地址读出的数据应与写入值完全一致。\n2. 确保对某一寄存器地址的写入操作，不会意外改变其他任何寄存器地址的内容。\n3. 检查复位信号有效后，寄存器文件的所有存储单元应被同步初始化为指定的默认值。",
+      "error": null
+    }
+  ]
+}

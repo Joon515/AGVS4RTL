@@ -22,6 +22,16 @@ class AGVSState(TypedDict, total=False):
     All fields are optional (total=False) to support incremental state building.
     """
     
+    # ==================== Raw Request Stage ====================
+    natural_language: str
+    """Original user requirement text."""
+
+    language: str
+    """Input language hint (e.g., zh/en)."""
+
+    source: str
+    """Input source tag (e.g., tui/api/smoke)."""
+
     # ==================== Pre-processing Stage ====================
     intent: Dict[str, Any]
     """Design intent extracted from natural language.
@@ -197,16 +207,52 @@ class AGVSState(TypedDict, total=False):
         }
     """
 
-    manager: Dict[str, Any]
-    """Manager orchestration summary.
+    generated_code: Dict[str, Any]
+    """Generated HDL code artifacts.
 
     Schema:
         {
-            "status": str,
-            "next_module": Optional[str],
-            "execution_plan": List[str],
-            "updated_at": str,
-            "version_scope": str
+            "language": "verilog" | "systemverilog",
+            "kind": "framework" | "full",
+            "model": str,
+            "generated_at": str,
+            "content": str
+        }
+    """
+
+    round_outputs: List[Dict[str, Any]]
+    """Per-stage output history for multi-round traceability.
+
+    Schema:
+        [
+            {
+                "round": int,
+                "stage": str,
+                "model": str,
+                "timestamp": str,
+                "output": Dict[str, Any]
+            }
+        ]
+    """
+
+    verification: Dict[str, Any]
+    """Requirement-code consistency verification report.
+
+    Schema:
+        {
+            "status": "pass" | "warn" | "fail",
+            "consistency_score": int,
+            "summary": str,
+            "issues": [
+                {
+                    "type": str,
+                    "severity": "high" | "medium" | "low",
+                    "message": str,
+                    "evidence": str
+                }
+            ],
+            "verified_at": str,
+            "model": str
         }
     """
 
@@ -243,4 +289,5 @@ def create_initial_state(
         modules={},
         tests={},
         errors=[],
+        round_outputs=[],
     )

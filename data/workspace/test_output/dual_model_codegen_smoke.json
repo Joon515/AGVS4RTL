@@ -1,0 +1,195 @@
+{
+  "intent": {
+    "summary": "设计一个包含AXI-Lite从设备接口和APB配置接口的32位GPIO控制器，用于控制32个可配置引脚。",
+    "target_language": "verilog",
+    "clock": "clk",
+    "reset": "rst_n",
+    "interfaces": [
+      "axi-lite",
+      "apb"
+    ]
+  },
+  "generated_code": {
+    "language": "verilog",
+    "kind": "framework",
+    "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    "generated_at": "2026-02-28T18:46:06.381133+00:00",
+    "content": "module gpio_top (\n    input  wire         clk,\n    input  wire         rst_n,\n\n    // AXI-Lite Interface (Slave)\n    input  wire [31:0]  axi_awaddr,\n    input  wire [2:0]   axi_awprot,\n    input  wire         axi_awvalid,\n    output wire         axi_awready,\n\n    input  wire [31:0]  axi_wdata,\n    input  wire [3:0]   axi_wstrb,\n    input  wire         axi_wvalid,\n    output wire         axi_wready,\n\n    output wire [1:0]   axi_bresp,\n    output wire         axi_bvalid,\n    input  wire         axi_bready,\n\n    input  wire [31:0]  axi_araddr,\n    input  wire [2:0]   axi_arprot,\n    input  wire         axi_arvalid,\n    output wire         axi_arready,\n\n    output wire [31:0]  axi_rdata,\n    output wire [1:0]   axi_rresp,\n    output wire         axi_rvalid,\n    input  wire         axi_rready,\n\n    // APB Interface\n    input  wire         apb_pclk,\n    input  wire         apb_preset_n,\n    input  wire [31:0]  apb_paddr,\n    input  wire         apb_psel,\n    input  wire         apb_penable,\n    input  wire         apb_pwrite,\n    input  wire [31:0]  apb_pwdata,\n    output wire [31:0]  apb_prdata,\n    output wire         apb_pready,\n    output wire         apb_pslverr,\n\n    // GPIO Ports\n    input  wire [31:0]  gpio_in,\n    output wire [31:0]  gpio_out,\n    output wire [31:0]  gpio_oe\n);\n\n    // TODO: Define registers for GPIO control and status\n    // - Output data register\n    // - Input data register (read-only)\n    // - Direction control register\n    // - Interrupt control/status registers (optional)\n\n    // TODO: Implement AXI-Lite read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Implement APB read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Synchronize interfaces to system clock 'clk'\n\nendmodule"
+  },
+  "round_outputs": [
+    {
+      "round": 1,
+      "stage": "parser",
+      "model": "deepseek-chat",
+      "timestamp": "2026-02-28T18:42:57.465692+00:00",
+      "output": {
+        "intent": {
+          "summary": "设计一个包含AXI-Lite从设备接口和APB配置接口的32位GPIO控制器，用于控制32个可配置引脚。",
+          "target_language": "verilog",
+          "clock": "clk",
+          "reset": "rst_n",
+          "interfaces": [
+            "axi-lite",
+            "apb"
+          ]
+        },
+        "constraints": {
+          "hard": [
+            {
+              "name": "freq",
+              "value": "100MHz",
+              "priority": 0
+            },
+            {
+              "name": "data_width",
+              "value": 32,
+              "priority": 0
+            },
+            {
+              "name": "gpio_count",
+              "value": 32,
+              "priority": 0
+            }
+          ],
+          "soft": [
+            {
+              "name": "area",
+              "value": "minimize",
+              "priority": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "round": 2,
+      "stage": "architect",
+      "model": "deepseek-reasoner",
+      "timestamp": "2026-02-28T18:45:44.182358+00:00",
+      "output": {
+        "architecture": {
+          "version": 1,
+          "hierarchy": {
+            "top": {
+              "name": "设计一个包含axi-lite从设备接口和apb配置接口的32",
+              "type": "top",
+              "description": "设计一个包含AXI-Lite从设备接口和APB配置接口的32位GPIO控制器，用于控制32个可配置引脚。",
+              "children": [],
+              "ports": {
+                "clk": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "系统时钟"
+                },
+                "rst_n": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "异步复位"
+                }
+              }
+            },
+            "modules": []
+          },
+          "interfaces": [],
+          "generated_at": "2026-02-28T18:45:44.182347+00:00",
+          "model": "deepseek-reasoner"
+        }
+      }
+    },
+    {
+      "round": 3,
+      "stage": "ppa_estimator",
+      "model": "rule_based_v1",
+      "timestamp": "2026-02-28T18:45:44.182779+00:00",
+      "output": {
+        "ppa": {
+          "version": 1,
+          "estimated_at": "2026-02-28T18:45:44.182774+00:00",
+          "estimator": "rule_based_v1",
+          "area": {
+            "total_gates": 0,
+            "breakdown": {
+              "registers": 0,
+              "combinational": 0,
+              "memory_bits": 0
+            },
+            "unit": "gate_equivalents",
+            "technology": "28nm",
+            "utilization": {
+              "estimated_area_mm2": 0.0,
+              "fpga_luts": 0,
+              "fpga_ffs": 0
+            }
+          },
+          "power": {
+            "dynamic_mw": 0.0,
+            "static_mw": 0.0,
+            "total_mw": 0.0,
+            "voltage": 1.2,
+            "breakdown": {
+              "clock_tree_mw": 0.0,
+              "logic_mw": 0.0,
+              "io_mw": 0.0,
+              "leakage_mw": 0.0
+            },
+            "conditions": {
+              "temperature_c": 25,
+              "activity_factor": 0.2
+            }
+          },
+          "timing": {
+            "max_freq_mhz": 4000.0,
+            "min_period_ns": 0.25,
+            "critical_path": {
+              "delay_ns": 0.25,
+              "slack_ns": 9.75,
+              "startpoint": "estimated",
+              "endpoint": "estimated",
+              "logic_levels": 5
+            },
+            "clock_domains": [
+              {
+                "name": "clk",
+                "frequency_mhz": 100.0,
+                "period_ns": 10.0
+              }
+            ],
+            "constraints": {
+              "input_delay_ns": 1.0,
+              "output_delay_ns": 1.5,
+              "clock_uncertainty_ns": 0.3
+            }
+          },
+          "feasibility": "high",
+          "warnings": [],
+          "metadata": {
+            "architecture_version": 1,
+            "technology": "28nm",
+            "constraint_summary": {
+              "freq_target_mhz": 100.0,
+              "area_budget_gates": null,
+              "power_budget_mw": null
+            },
+            "estimation_method": "analytical",
+            "confidence": 0.75
+          }
+        }
+      }
+    },
+    {
+      "round": 4,
+      "stage": "codegen",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "timestamp": "2026-02-28T18:46:06.381144+00:00",
+      "output": {
+        "generated_code": {
+          "language": "verilog",
+          "kind": "framework",
+          "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "generated_at": "2026-02-28T18:46:06.381133+00:00",
+          "content": "module gpio_top (\n    input  wire         clk,\n    input  wire         rst_n,\n\n    // AXI-Lite Interface (Slave)\n    input  wire [31:0]  axi_awaddr,\n    input  wire [2:0]   axi_awprot,\n    input  wire         axi_awvalid,\n    output wire         axi_awready,\n\n    input  wire [31:0]  axi_wdata,\n    input  wire [3:0]   axi_wstrb,\n    input  wire         axi_wvalid,\n    output wire         axi_wready,\n\n    output wire [1:0]   axi_bresp,\n    output wire         axi_bvalid,\n    input  wire         axi_bready,\n\n    input  wire [31:0]  axi_araddr,\n    input  wire [2:0]   axi_arprot,\n    input  wire         axi_arvalid,\n    output wire         axi_arready,\n\n    output wire [31:0]  axi_rdata,\n    output wire [1:0]   axi_rresp,\n    output wire         axi_rvalid,\n    input  wire         axi_rready,\n\n    // APB Interface\n    input  wire         apb_pclk,\n    input  wire         apb_preset_n,\n    input  wire [31:0]  apb_paddr,\n    input  wire         apb_psel,\n    input  wire         apb_penable,\n    input  wire         apb_pwrite,\n    input  wire [31:0]  apb_pwdata,\n    output wire [31:0]  apb_prdata,\n    output wire         apb_pready,\n    output wire         apb_pslverr,\n\n    // GPIO Ports\n    input  wire [31:0]  gpio_in,\n    output wire [31:0]  gpio_out,\n    output wire [31:0]  gpio_oe\n);\n\n    // TODO: Define registers for GPIO control and status\n    // - Output data register\n    // - Input data register (read-only)\n    // - Direction control register\n    // - Interrupt control/status registers (optional)\n\n    // TODO: Implement AXI-Lite read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Implement APB read and write logic\n    // - Decode address\n    // - Handle read/write transactions\n    // - Update registers accordingly\n\n    // TODO: Synchronize interfaces to system clock 'clk'\n\nendmodule"
+        }
+      }
+    }
+  ]
+}

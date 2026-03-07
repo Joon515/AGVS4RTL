@@ -429,6 +429,19 @@ def ppa_estimation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     constraints = state.get("constraints", {"hard": [], "soft": []})
     
     ppa = estimator.estimate(architecture, constraints)
+
+    round_outputs = list(state.get("round_outputs", []))
+    round_outputs.append(
+        {
+            "round": len(round_outputs) + 1,
+            "stage": "ppa_estimator",
+            "model": "rule_based_v1",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "output": {
+                "ppa": ppa,
+            },
+        }
+    )
     
     # Update version history with PPA snapshot
     versions = state.get("versions", [])
@@ -438,4 +451,5 @@ def ppa_estimation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "ppa": ppa,
         "versions": versions,
+        "round_outputs": round_outputs,
     }

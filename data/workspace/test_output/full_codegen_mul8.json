@@ -1,0 +1,787 @@
+{
+  "intent": {
+    "summary": "APB接口的可编程定时器，支持单次脉冲和周期波形模式",
+    "target_language": "verilog",
+    "clock": "clk",
+    "reset": "rst_ni",
+    "interfaces": [
+      "apb"
+    ]
+  },
+  "constraints": {
+    "hard": [
+      {
+        "name": "freq",
+        "value": "100MHz",
+        "priority": 0
+      },
+      {
+        "name": "data_width",
+        "value": 32,
+        "priority": 0
+      },
+      {
+        "name": "addr_width",
+        "value": "inferred",
+        "priority": 0
+      }
+    ],
+    "soft": [
+      {
+        "name": "area",
+        "value": "minimize",
+        "priority": 1
+      }
+    ]
+  },
+  "metadata": {
+    "request_id": "9e657554-48d2-47a1-a919-23d9938cbf3a",
+    "created_at": "2026-02-28T21:27:42.908423+00:00",
+    "language": "zh",
+    "source": "tui"
+  },
+  "architecture": {
+    "version": 1,
+    "hierarchy": {
+      "top": {
+        "name": "apb_timer",
+        "type": "top",
+        "description": "APB接口的可编程定时器顶层模块。支持单次脉冲和周期波形两种工作模式。",
+        "children": [
+          "apb_slave_if",
+          "ctrl_regs",
+          "timer_core"
+        ],
+        "ports": {
+          "clk": {
+            "type": "input",
+            "width": 1,
+            "description": "系统时钟 (100MHz)"
+          },
+          "rst_ni": {
+            "type": "input",
+            "width": 1,
+            "description": "异步复位，低电平有效"
+          },
+          "timer_irq": {
+            "type": "output",
+            "width": 1,
+            "description": "定时器中断输出"
+          },
+          "timer_out": {
+            "type": "output",
+            "width": 1,
+            "description": "定时器波形输出"
+          }
+        }
+      },
+      "modules": [
+        {
+          "name": "apb_slave_if",
+          "type": "leaf",
+          "description": "APB从机接口协议处理模块。负责APB总线事务的解码、地址译码、读写数据通路的控制与握手。",
+          "ports": {},
+          "parameters": {}
+        },
+        {
+          "name": "ctrl_regs",
+          "type": "leaf",
+          "description": "控制寄存器组模块。包含定时器的配置寄存器（如模式选择、使能、装载值、比较值等），提供APB读写访问接口，并向timer_core输出控制信号。",
+          "ports": {},
+          "parameters": {}
+        },
+        {
+          "name": "timer_core",
+          "type": "leaf",
+          "description": "定时器核心逻辑模块。包含递减计数器、比较器和模式控制状态机，根据配置产生timer_irq和timer_out信号。",
+          "ports": {},
+          "parameters": {}
+        }
+      ]
+    },
+    "interfaces": [
+      {
+        "name": "s_apb",
+        "protocol": "APB",
+        "mode": "slave",
+        "data_width": 32,
+        "addr_width": 5,
+        "description": "APB从机接口，连接到系统总线。用于配置定时器模式、装载计数值、读取当前状态。"
+      }
+    ],
+    "port_mapping": {
+      "top": {
+        "s_apb_pclk": "clk",
+        "s_apb_presetn": "rst_ni",
+        "s_apb_psel": {
+          "type": "input",
+          "width": 1,
+          "description": "APB从机选择"
+        },
+        "s_apb_penable": {
+          "type": "input",
+          "width": 1,
+          "description": "APB使能"
+        },
+        "s_apb_pwrite": {
+          "type": "input",
+          "width": 1,
+          "description": "APB写使能 (1:写, 0:读)"
+        },
+        "s_apb_paddr": {
+          "type": "input",
+          "width": 5,
+          "description": "APB地址总线 (支持最多2^5=32个32-bit寄存器)"
+        },
+        "s_apb_pwdata": {
+          "type": "input",
+          "width": 32,
+          "description": "APB写数据总线"
+        },
+        "s_apb_prdata": {
+          "type": "output",
+          "width": 32,
+          "description": "APB读数据总线"
+        },
+        "s_apb_pslverr": {
+          "type": "output",
+          "width": 1,
+          "description": "APB从机错误响应 (本设计固定为0)"
+        },
+        "s_apb_pready": {
+          "type": "output",
+          "width": 1,
+          "description": "APB从机就绪 (本设计固定为1，零等待)"
+        }
+      }
+    },
+    "generated_at": "2026-02-28T21:29:03.530010+00:00",
+    "model": "deepseek-reasoner"
+  },
+  "versions": [
+    {
+      "version": 1,
+      "timestamp": "2026-02-28T21:29:03.530021+00:00",
+      "changes": "初始架构设计",
+      "ppa_snapshot": null,
+      "coverage_snapshot": null,
+      "status": "baseline"
+    }
+  ],
+  "generated_code": {
+    "language": "verilog",
+    "kind": "framework",
+    "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    "generated_at": "2026-02-28T21:29:11.568718+00:00",
+    "content": "module apb_timer (\n  input  clk,\n  input  rst_ni,\n\n  // APB interface\n  input  [4:0]  s_apb_paddr,\n  input         s_apb_psel,\n  input         s_apb_penable,\n  input         s_apb_pwrite,\n  input  [31:0] s_apb_pwdata,\n  output [31:0] s_apb_prdata,\n  output        s_apb_pslverr,\n  output        s_apb_pready,\n\n  // Output signals\n  output timer_irq,\n  output timer_out\n);\n\n  // TODO: Define internal registers and wires\n\n  // TODO: Instantiate submodules\n  // - apb_slave_if\n  // - ctrl_regs\n  // - timer_core\n\n  // TODO: Implement APB interface logic\n\n  // TODO: Connect control registers to timer core\n\n  // TODO: Implement interrupt and output generation logic\n\nendmodule"
+  },
+  "round_outputs": [
+    {
+      "round": 1,
+      "stage": "parser",
+      "model": "deepseek-reasoner",
+      "timestamp": "2026-02-28T21:27:42.908456+00:00",
+      "input_snapshot": {
+        "natural_language": "",
+        "language": "zh",
+        "source": "tui"
+      },
+      "output": {
+        "intent": {
+          "summary": "APB接口的可编程定时器，支持单次脉冲和周期波形模式",
+          "target_language": "verilog",
+          "clock": "clk",
+          "reset": "rst_ni",
+          "interfaces": [
+            "apb"
+          ]
+        },
+        "constraints": {
+          "hard": [
+            {
+              "name": "freq",
+              "value": "100MHz",
+              "priority": 0
+            },
+            {
+              "name": "data_width",
+              "value": 32,
+              "priority": 0
+            },
+            {
+              "name": "addr_width",
+              "value": "inferred",
+              "priority": 0
+            }
+          ],
+          "soft": [
+            {
+              "name": "area",
+              "value": "minimize",
+              "priority": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "round": 2,
+      "stage": "architect",
+      "model": "deepseek-reasoner",
+      "timestamp": "2026-02-28T21:29:03.530019+00:00",
+      "input_snapshot": {
+        "intent": {
+          "summary": "APB接口的可编程定时器，支持单次脉冲和周期波形模式",
+          "target_language": "verilog",
+          "clock": "clk",
+          "reset": "rst_ni",
+          "interfaces": [
+            "apb"
+          ]
+        },
+        "constraints": {
+          "hard": [
+            {
+              "name": "freq",
+              "value": "100MHz",
+              "priority": 0
+            },
+            {
+              "name": "data_width",
+              "value": 32,
+              "priority": 0
+            },
+            {
+              "name": "addr_width",
+              "value": "inferred",
+              "priority": 0
+            }
+          ],
+          "soft": [
+            {
+              "name": "area",
+              "value": "minimize",
+              "priority": 1
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "9e657554-48d2-47a1-a919-23d9938cbf3a",
+          "created_at": "2026-02-28T21:27:42.908423+00:00",
+          "language": "zh",
+          "source": "tui"
+        }
+      },
+      "output": {
+        "architecture": {
+          "version": 1,
+          "hierarchy": {
+            "top": {
+              "name": "apb_timer",
+              "type": "top",
+              "description": "APB接口的可编程定时器顶层模块。支持单次脉冲和周期波形两种工作模式。",
+              "children": [
+                "apb_slave_if",
+                "ctrl_regs",
+                "timer_core"
+              ],
+              "ports": {
+                "clk": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "系统时钟 (100MHz)"
+                },
+                "rst_ni": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "异步复位，低电平有效"
+                },
+                "timer_irq": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器中断输出"
+                },
+                "timer_out": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器波形输出"
+                }
+              }
+            },
+            "modules": [
+              {
+                "name": "apb_slave_if",
+                "type": "leaf",
+                "description": "APB从机接口协议处理模块。负责APB总线事务的解码、地址译码、读写数据通路的控制与握手。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "ctrl_regs",
+                "type": "leaf",
+                "description": "控制寄存器组模块。包含定时器的配置寄存器（如模式选择、使能、装载值、比较值等），提供APB读写访问接口，并向timer_core输出控制信号。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "timer_core",
+                "type": "leaf",
+                "description": "定时器核心逻辑模块。包含递减计数器、比较器和模式控制状态机，根据配置产生timer_irq和timer_out信号。",
+                "ports": {},
+                "parameters": {}
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "name": "s_apb",
+              "protocol": "APB",
+              "mode": "slave",
+              "data_width": 32,
+              "addr_width": 5,
+              "description": "APB从机接口，连接到系统总线。用于配置定时器模式、装载计数值、读取当前状态。"
+            }
+          ],
+          "port_mapping": {
+            "top": {
+              "s_apb_pclk": "clk",
+              "s_apb_presetn": "rst_ni",
+              "s_apb_psel": {
+                "type": "input",
+                "width": 1,
+                "description": "APB从机选择"
+              },
+              "s_apb_penable": {
+                "type": "input",
+                "width": 1,
+                "description": "APB使能"
+              },
+              "s_apb_pwrite": {
+                "type": "input",
+                "width": 1,
+                "description": "APB写使能 (1:写, 0:读)"
+              },
+              "s_apb_paddr": {
+                "type": "input",
+                "width": 5,
+                "description": "APB地址总线 (支持最多2^5=32个32-bit寄存器)"
+              },
+              "s_apb_pwdata": {
+                "type": "input",
+                "width": 32,
+                "description": "APB写数据总线"
+              },
+              "s_apb_prdata": {
+                "type": "output",
+                "width": 32,
+                "description": "APB读数据总线"
+              },
+              "s_apb_pslverr": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机错误响应 (本设计固定为0)"
+              },
+              "s_apb_pready": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机就绪 (本设计固定为1，零等待)"
+              }
+            }
+          },
+          "generated_at": "2026-02-28T21:29:03.530010+00:00",
+          "model": "deepseek-reasoner"
+        }
+      }
+    },
+    {
+      "round": 3,
+      "stage": "codegen",
+      "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "timestamp": "2026-02-28T21:29:11.568729+00:00",
+      "input_snapshot": {
+        "intent": {
+          "summary": "APB接口的可编程定时器，支持单次脉冲和周期波形模式",
+          "target_language": "verilog",
+          "clock": "clk",
+          "reset": "rst_ni",
+          "interfaces": [
+            "apb"
+          ]
+        },
+        "constraints": {
+          "hard": [
+            {
+              "name": "freq",
+              "value": "100MHz",
+              "priority": 0
+            },
+            {
+              "name": "data_width",
+              "value": 32,
+              "priority": 0
+            },
+            {
+              "name": "addr_width",
+              "value": "inferred",
+              "priority": 0
+            }
+          ],
+          "soft": [
+            {
+              "name": "area",
+              "value": "minimize",
+              "priority": 1
+            }
+          ]
+        },
+        "architecture": {
+          "version": 1,
+          "hierarchy": {
+            "top": {
+              "name": "apb_timer",
+              "type": "top",
+              "description": "APB接口的可编程定时器顶层模块。支持单次脉冲和周期波形两种工作模式。",
+              "children": [
+                "apb_slave_if",
+                "ctrl_regs",
+                "timer_core"
+              ],
+              "ports": {
+                "clk": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "系统时钟 (100MHz)"
+                },
+                "rst_ni": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "异步复位，低电平有效"
+                },
+                "timer_irq": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器中断输出"
+                },
+                "timer_out": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器波形输出"
+                }
+              }
+            },
+            "modules": [
+              {
+                "name": "apb_slave_if",
+                "type": "leaf",
+                "description": "APB从机接口协议处理模块。负责APB总线事务的解码、地址译码、读写数据通路的控制与握手。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "ctrl_regs",
+                "type": "leaf",
+                "description": "控制寄存器组模块。包含定时器的配置寄存器（如模式选择、使能、装载值、比较值等），提供APB读写访问接口，并向timer_core输出控制信号。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "timer_core",
+                "type": "leaf",
+                "description": "定时器核心逻辑模块。包含递减计数器、比较器和模式控制状态机，根据配置产生timer_irq和timer_out信号。",
+                "ports": {},
+                "parameters": {}
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "name": "s_apb",
+              "protocol": "APB",
+              "mode": "slave",
+              "data_width": 32,
+              "addr_width": 5,
+              "description": "APB从机接口，连接到系统总线。用于配置定时器模式、装载计数值、读取当前状态。"
+            }
+          ],
+          "port_mapping": {
+            "top": {
+              "s_apb_pclk": "clk",
+              "s_apb_presetn": "rst_ni",
+              "s_apb_psel": {
+                "type": "input",
+                "width": 1,
+                "description": "APB从机选择"
+              },
+              "s_apb_penable": {
+                "type": "input",
+                "width": 1,
+                "description": "APB使能"
+              },
+              "s_apb_pwrite": {
+                "type": "input",
+                "width": 1,
+                "description": "APB写使能 (1:写, 0:读)"
+              },
+              "s_apb_paddr": {
+                "type": "input",
+                "width": 5,
+                "description": "APB地址总线 (支持最多2^5=32个32-bit寄存器)"
+              },
+              "s_apb_pwdata": {
+                "type": "input",
+                "width": 32,
+                "description": "APB写数据总线"
+              },
+              "s_apb_prdata": {
+                "type": "output",
+                "width": 32,
+                "description": "APB读数据总线"
+              },
+              "s_apb_pslverr": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机错误响应 (本设计固定为0)"
+              },
+              "s_apb_pready": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机就绪 (本设计固定为1，零等待)"
+              }
+            }
+          },
+          "generated_at": "2026-02-28T21:29:03.530010+00:00",
+          "model": "deepseek-reasoner"
+        },
+        "ppa": {},
+        "metadata": {
+          "request_id": "9e657554-48d2-47a1-a919-23d9938cbf3a",
+          "created_at": "2026-02-28T21:27:42.908423+00:00",
+          "language": "zh",
+          "source": "tui"
+        }
+      },
+      "output": {
+        "generated_code": {
+          "language": "verilog",
+          "kind": "framework",
+          "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "generated_at": "2026-02-28T21:29:11.568718+00:00",
+          "content": "module apb_timer (\n  input  clk,\n  input  rst_ni,\n\n  // APB interface\n  input  [4:0]  s_apb_paddr,\n  input         s_apb_psel,\n  input         s_apb_penable,\n  input         s_apb_pwrite,\n  input  [31:0] s_apb_pwdata,\n  output [31:0] s_apb_prdata,\n  output        s_apb_pslverr,\n  output        s_apb_pready,\n\n  // Output signals\n  output timer_irq,\n  output timer_out\n);\n\n  // TODO: Define internal registers and wires\n\n  // TODO: Instantiate submodules\n  // - apb_slave_if\n  // - ctrl_regs\n  // - timer_core\n\n  // TODO: Implement APB interface logic\n\n  // TODO: Connect control registers to timer core\n\n  // TODO: Implement interrupt and output generation logic\n\nendmodule"
+        }
+      }
+    },
+    {
+      "round": 4,
+      "stage": "verify",
+      "model": "deepseek-reasoner",
+      "timestamp": "2026-02-28T21:30:07.736143+00:00",
+      "input_snapshot": {
+        "natural_language": "",
+        "intent": {
+          "summary": "APB接口的可编程定时器，支持单次脉冲和周期波形模式",
+          "target_language": "verilog",
+          "clock": "clk",
+          "reset": "rst_ni",
+          "interfaces": [
+            "apb"
+          ]
+        },
+        "constraints": {
+          "hard": [
+            {
+              "name": "freq",
+              "value": "100MHz",
+              "priority": 0
+            },
+            {
+              "name": "data_width",
+              "value": 32,
+              "priority": 0
+            },
+            {
+              "name": "addr_width",
+              "value": "inferred",
+              "priority": 0
+            }
+          ],
+          "soft": [
+            {
+              "name": "area",
+              "value": "minimize",
+              "priority": 1
+            }
+          ]
+        },
+        "architecture": {
+          "version": 1,
+          "hierarchy": {
+            "top": {
+              "name": "apb_timer",
+              "type": "top",
+              "description": "APB接口的可编程定时器顶层模块。支持单次脉冲和周期波形两种工作模式。",
+              "children": [
+                "apb_slave_if",
+                "ctrl_regs",
+                "timer_core"
+              ],
+              "ports": {
+                "clk": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "系统时钟 (100MHz)"
+                },
+                "rst_ni": {
+                  "type": "input",
+                  "width": 1,
+                  "description": "异步复位，低电平有效"
+                },
+                "timer_irq": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器中断输出"
+                },
+                "timer_out": {
+                  "type": "output",
+                  "width": 1,
+                  "description": "定时器波形输出"
+                }
+              }
+            },
+            "modules": [
+              {
+                "name": "apb_slave_if",
+                "type": "leaf",
+                "description": "APB从机接口协议处理模块。负责APB总线事务的解码、地址译码、读写数据通路的控制与握手。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "ctrl_regs",
+                "type": "leaf",
+                "description": "控制寄存器组模块。包含定时器的配置寄存器（如模式选择、使能、装载值、比较值等），提供APB读写访问接口，并向timer_core输出控制信号。",
+                "ports": {},
+                "parameters": {}
+              },
+              {
+                "name": "timer_core",
+                "type": "leaf",
+                "description": "定时器核心逻辑模块。包含递减计数器、比较器和模式控制状态机，根据配置产生timer_irq和timer_out信号。",
+                "ports": {},
+                "parameters": {}
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "name": "s_apb",
+              "protocol": "APB",
+              "mode": "slave",
+              "data_width": 32,
+              "addr_width": 5,
+              "description": "APB从机接口，连接到系统总线。用于配置定时器模式、装载计数值、读取当前状态。"
+            }
+          ],
+          "port_mapping": {
+            "top": {
+              "s_apb_pclk": "clk",
+              "s_apb_presetn": "rst_ni",
+              "s_apb_psel": {
+                "type": "input",
+                "width": 1,
+                "description": "APB从机选择"
+              },
+              "s_apb_penable": {
+                "type": "input",
+                "width": 1,
+                "description": "APB使能"
+              },
+              "s_apb_pwrite": {
+                "type": "input",
+                "width": 1,
+                "description": "APB写使能 (1:写, 0:读)"
+              },
+              "s_apb_paddr": {
+                "type": "input",
+                "width": 5,
+                "description": "APB地址总线 (支持最多2^5=32个32-bit寄存器)"
+              },
+              "s_apb_pwdata": {
+                "type": "input",
+                "width": 32,
+                "description": "APB写数据总线"
+              },
+              "s_apb_prdata": {
+                "type": "output",
+                "width": 32,
+                "description": "APB读数据总线"
+              },
+              "s_apb_pslverr": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机错误响应 (本设计固定为0)"
+              },
+              "s_apb_pready": {
+                "type": "output",
+                "width": 1,
+                "description": "APB从机就绪 (本设计固定为1，零等待)"
+              }
+            }
+          },
+          "generated_at": "2026-02-28T21:29:03.530010+00:00",
+          "model": "deepseek-reasoner"
+        },
+        "generated_code": {
+          "language": "verilog",
+          "kind": "framework",
+          "model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "generated_at": "2026-02-28T21:29:11.568718+00:00",
+          "content": "module apb_timer (\n  input  clk,\n  input  rst_ni,\n\n  // APB interface\n  input  [4:0]  s_apb_paddr,\n  input         s_apb_psel,\n  input         s_apb_penable,\n  input         s_apb_pwrite,\n  input  [31:0] s_apb_pwdata,\n  output [31:0] s_apb_prdata,\n  output        s_apb_pslverr,\n  output        s_apb_pready,\n\n  // Output signals\n  output timer_irq,\n  output timer_out\n);\n\n  // TODO: Define internal registers and wires\n\n  // TODO: Instantiate submodules\n  // - apb_slave_if\n  // - ctrl_regs\n  // - timer_core\n\n  // TODO: Implement APB interface logic\n\n  // TODO: Connect control registers to timer core\n\n  // TODO: Implement interrupt and output generation logic\n\nendmodule"
+        }
+      },
+      "output": {
+        "verification": {
+          "status": "fail",
+          "consistency_score": 0.3,
+          "summary": "自然语言需求缺失，生成代码仅为框架未实现逻辑。",
+          "issues": [
+            {
+              "type": "constraint_gap",
+              "severity": "high",
+              "message": "自然语言需求字段为空，无法审查需求与intent的一致性。",
+              "evidence": "natural_language: \"\""
+            },
+            {
+              "type": "code_gap",
+              "severity": "medium",
+              "message": "生成的Verilog代码仅为模块框架，未实现内部子模块实例化和逻辑，与architecture中定义的模块职责不一致。",
+              "evidence": "generated_code.content中包含多个TODO注释，如'// TODO: Instantiate submodules'和'// TODO: Implement APB interface logic'。"
+            }
+          ],
+          "verified_at": "2026-02-28T21:30:07.736114+00:00",
+          "model": "deepseek-reasoner"
+        }
+      }
+    }
+  ],
+  "verification": {
+    "status": "fail",
+    "consistency_score": 0.3,
+    "summary": "自然语言需求缺失，生成代码仅为框架未实现逻辑。",
+    "issues": [
+      {
+        "type": "constraint_gap",
+        "severity": "high",
+        "message": "自然语言需求字段为空，无法审查需求与intent的一致性。",
+        "evidence": "natural_language: \"\""
+      },
+      {
+        "type": "code_gap",
+        "severity": "medium",
+        "message": "生成的Verilog代码仅为模块框架，未实现内部子模块实例化和逻辑，与architecture中定义的模块职责不一致。",
+        "evidence": "generated_code.content中包含多个TODO注释，如'// TODO: Instantiate submodules'和'// TODO: Implement APB interface logic'。"
+      }
+    ],
+    "verified_at": "2026-02-28T21:30:07.736114+00:00",
+    "model": "deepseek-reasoner"
+  }
+}

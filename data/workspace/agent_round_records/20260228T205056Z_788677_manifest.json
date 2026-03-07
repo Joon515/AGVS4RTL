@@ -1,0 +1,13 @@
+{
+  "request_id": "2bf24aaee2e54539b501798ca557fdf5",
+  "recorded_at": "2026-02-28T20:50:56.199486+00:00",
+  "instruction": "设计一个AXI-Lite 32位寄存器文件，200MHz。",
+  "output_root": "/app/data/workspace/agent_round_records",
+  "created_count": 4,
+  "files": [
+    "/app/data/workspace/agent_round_records/nlp_agent/20260228T205056Z_761848.json",
+    "/app/data/workspace/agent_round_records/architect_agent/20260228T205056Z_160654.json",
+    "/app/data/workspace/agent_round_records/codegen_agent/20260228T205056Z_853612.json",
+    "/app/data/workspace/agent_round_records/verify_agent/20260228T205056Z_554735.json"
+  ]
+}

@@ -7,14 +7,14 @@ and constraints. It uses LLM to understand HDL-specific terminology and requirem
 from __future__ import annotations
 
 import json
-import os
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from ..prompts.loader import PromptLoader
-from .structure_request import (
+from ..llm_config import resolve_agent_llm_config
+from ..pre_agent.stracture_request import (
     Constraint,
     DesignIntent,
     NaturalLanguageRequest,
@@ -28,11 +28,10 @@ class ParserAgent:
     
     def __init__(
         self,
-        model_name: str = "gpt-4o-mini",
-        temperature: float = 0.1,
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
         api_key: Optional[str] = None,
-        llm: Optional[Any] = None,
-        prompt_loader: Optional[PromptLoader] = None,
+        api_base: Optional[str] = None,
     ):
         """Initialize Parser Agent.
         
@@ -43,14 +42,23 @@ class ParserAgent:
             llm: Optional injected LLM-compatible client for testing
             prompt_loader: Optional injected prompt loader
         """
-        self.model_name = model_name
-        self.temperature = temperature
+        cfg = resolve_agent_llm_config(
+            "pre_agent",
+            model_name=model_name,
+            temperature=temperature,
+            api_key=api_key,
+            api_base=api_base,
+        )
+
+        self.model_name = cfg["model_name"] or "deepseek-chat"
+        self.temperature = cfg["temperature"] if cfg["temperature"] is not None else 0.1
         
         # Initialize LLM
-        self.llm = llm or ChatOpenAI(
-            model=model_name,
-            temperature=temperature,
-            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+        self.llm = ChatOpenAI(
+            model=self.model_name,
+            temperature=self.temperature,
+            openai_api_key=cfg["api_key"],
+            openai_api_base=cfg["api_base"],
         )
         self.prompt_loader = prompt_loader or PromptLoader()
     
@@ -83,11 +91,8 @@ class ParserAgent:
             HumanMessage(content=f"请分析以下需求：\n\n{natural_language}"),
         ]
         
-        # Call LLM
-        response = self.llm.invoke(messages)
-        
-        # Parse LLM response
         try:
+            response = self.llm.invoke(messages)
             parsed = self._parse_llm_response(response.content)
         except Exception as e:
             print(f"Warning: LLM parsing failed, using fallback. Error: {e}")
@@ -287,6 +292,32 @@ def parse_requirement_node(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Parse
     result = parser.parse_to_state(natural_language, language, source)
+
+    # Multi-round output trace
+    round_outputs = list(state.get("round_outputs", []))
+    round_outputs.append(
+        {
+            "round": len(round_outputs) + 1,
+            "stage": "parser",
+            "model": parser.model_name,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "input_snapshot": {
+                "natural_language": natural_language,
+                "language": language,
+                "source": source,
+            },
+            "output": {
+                "intent": result.get("intent", {}),
+                "constraints": result.get("constraints", {}),
+            },
+        }
+    )
     
     # Return state update
-    return result
+    return {
+        "natural_language": natural_language,
+        "language": language,
+        "source": source,
+        **result,
+        "round_outputs": round_outputs,
+    }
