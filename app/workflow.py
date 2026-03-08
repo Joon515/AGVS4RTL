@@ -19,13 +19,11 @@ from app.manage_agent import (
     AGVSState,
     architecture_design_node,
     codegen_framework_node,
-    create_initial_state,
     manager_orchestration_node,
     ppa_estimation_node,
     verify_consistency_node,
 )
 from app.pre_agent.parser_agent import parse_requirement_node
-from app.test_agent import test_generation_node
 
 
 def create_pre_manager_workflow() -> StateGraph:
@@ -84,6 +82,28 @@ def run_pre_manager_workflow(
     final_state = workflow.invoke(initial_state)
     
     return final_state
+
+
+def create_manager_workflow() -> StateGraph:
+    """Create workflow graph that extends to manager orchestration.
+
+    Workflow:
+        START → Parser → Architect → PPA Estimator → Manager → END
+    """
+    workflow = StateGraph(AGVSState)
+
+    workflow.add_node("parser", parse_requirement_node)
+    workflow.add_node("architect", architecture_design_node)
+    workflow.add_node("ppa_estimator", ppa_estimation_node)
+    workflow.add_node("manager", manager_orchestration_node)
+
+    workflow.set_entry_point("parser")
+    workflow.add_edge("parser", "architect")
+    workflow.add_edge("architect", "ppa_estimator")
+    workflow.add_edge("ppa_estimator", "manager")
+    workflow.add_edge("manager", END)
+
+    return workflow.compile()
 
 
 def create_full_codegen_workflow() -> StateGraph:

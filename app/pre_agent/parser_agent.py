@@ -9,12 +9,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from ..llm_config import resolve_agent_llm_config
-from ..pre_agent.stracture_request import (
+from ..prompts.loader import PromptLoader
+from ..pre_agent.structure_request import (
     Constraint,
     DesignIntent,
     NaturalLanguageRequest,
@@ -32,6 +34,8 @@ class ParserAgent:
         temperature: Optional[float] = None,
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        llm: Optional[Any] = None,
+        prompt_loader: Optional[PromptLoader] = None,
     ):
         """Initialize Parser Agent.
         
@@ -54,7 +58,7 @@ class ParserAgent:
         self.temperature = cfg["temperature"] if cfg["temperature"] is not None else 0.1
         
         # Initialize LLM
-        self.llm = ChatOpenAI(
+        self.llm = llm or ChatOpenAI(
             model=self.model_name,
             temperature=self.temperature,
             openai_api_key=cfg["api_key"],
@@ -104,9 +108,6 @@ class ParserAgent:
             language=language,
             source=source,
         )
-        
-        from datetime import datetime, timezone
-        from uuid import uuid4
         
         output = PreprocessOutput(
             request_id=str(uuid4()),
