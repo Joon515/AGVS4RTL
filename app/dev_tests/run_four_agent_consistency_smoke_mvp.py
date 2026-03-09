@@ -19,12 +19,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
+
 from app.workflow import run_full_codegen_workflow
 
 
 DEFAULT_CASES = [
     "设计一个最简单的8位乘法器。",
 ]
+
+
+def _workspace_root() -> Path:
+    """Resolve workspace root for local and container execution."""
+    app_root = Path("/app")
+    return app_root if app_root.exists() else PROJECT_ROOT
 
 
 def _extract_keywords(text: str) -> Dict[str, Any]:
@@ -182,13 +195,14 @@ def run_case_offline(requirement: str, result_json: str, verify_threshold: float
 
 
 def main() -> int:
+    """Run MVP 4-agent consistency smoke checks."""
     parser = argparse.ArgumentParser(description="4-agent consistency smoke test (MVP)")
     parser.add_argument("--case", action="append", help="Requirement text (repeatable)")
     parser.add_argument("--result-json", default=None, help="Existing workflow result JSON path for offline check")
     parser.add_argument("--verify-threshold", type=float, default=30.0, help="Verify score threshold (0-100)")
     parser.add_argument(
         "--output",
-        default="/app/data/workspace/test_output/four_agent_consistency_smoke_mvp.json",
+        default=str(_workspace_root() / "data/workspace/test_output/four_agent_consistency_smoke_mvp.json"),
         help="Output JSON report path",
     )
     args = parser.parse_args()

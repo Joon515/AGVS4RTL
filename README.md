@@ -31,9 +31,11 @@ Verify Agent（需求-代码一致性评分）
 - `app/main.py`：应用入口（默认启动 TUI）
 - `app/workflow.py`：工作流定义与执行入口
 - `app/pre_agent/`：需求解析与预处理
-- `app/manage_agent/`：架构、PPA、代码生成、一致性验证
+- `app/manage_agent/`：架构、PPA、调度与一致性验证
+- `app/generate_agent/`：Verilog 框架代码生成
 - `app/rag/`：向量库与检索封装
 - `app/ui/`：Rich TUI 与配置存储
+- `app/dev_tests/`：开发测试脚本（本地与 Docker）
 - `data/config/`：Agent 配置与加密密钥
 - `data/workspace/test_output/`：冒烟测试输出
 - `docs/`：架构、规范、测试与迭代文档
@@ -59,10 +61,18 @@ docker compose build agent-core eda-sandbox
 docker compose up -d
 ```
 
+说明：`docker compose up -d` 仅启动容器（`agent-core` 默认命令是 `tail -f /dev/null`），不会自动执行工作流；需要通过 `docker compose exec ...` 手动触发任务。
+
 ### 3) 启动 TUI
 
 ```bash
 python3 -m app.main
+```
+
+在 Docker 中启动 TUI：
+
+```bash
+docker compose exec agent-core python3 -m app.main
 ```
 
 ## 配置说明
@@ -93,7 +103,7 @@ docker compose exec agent-core python3 app/pre_agent/test_unit_basic.py
 
 ```bash
 docker exec -e PYTHONPATH=/app hdl_agent_core sh -lc \
-"python3 /app/app/test_four_agent_consistency_smoke_mvp.py \
+"python3 /app/app/dev_tests/run_four_agent_consistency_smoke_mvp.py \
 	--case '设计一个最简单的8位乘法器。' \
 	--output /app/data/workspace/test_output/four_agent_consistency_smoke_mvp_8bit.json"
 ```
@@ -102,7 +112,7 @@ docker exec -e PYTHONPATH=/app hdl_agent_core sh -lc \
 
 ```bash
 docker exec -e PYTHONPATH=/app hdl_agent_core sh -lc \
-"python3 /app/app/test_four_agent_consistency_smoke.py \
+"python3 /app/app/dev_tests/run_four_agent_consistency_smoke.py \
 	--case '设计一个最简单的8位乘法器。'"
 ```
 

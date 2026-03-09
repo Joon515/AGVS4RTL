@@ -15,10 +15,10 @@ from typing import Any, Dict
 
 from langgraph.graph import END, StateGraph
 
+from app.generate_agent import codegen_framework_node
 from app.manage_agent import (
     AGVSState,
     architecture_design_node,
-    codegen_framework_node,
     manager_orchestration_node,
     ppa_estimation_node,
     verify_consistency_node,
@@ -143,79 +143,3 @@ def run_full_codegen_workflow(
     }
 
     return workflow.invoke(initial_state)
-
-
-# Example usage
-if __name__ == "__main__":
-    # Example requirement
-    requirement = """
-    设计一个带AXI4-Lite接口的32位寄存器文件，支持4KB地址空间。
-    工作频率200MHz，低功耗设计。
-    """
-    
-    print("=" * 60)
-    print("AGVS4RTL Pre-Manager Workflow Demo")
-    print("=" * 60)
-    print(f"\n需求: {requirement.strip()}\n")
-    
-    # Run workflow
-    print("执行工作流...")
-    result = run_pre_manager_workflow(requirement)
-    
-    # Display results
-    print("\n" + "=" * 60)
-    print("1. 解析结果 (Parser Agent)")
-    print("=" * 60)
-    intent = result.get("intent", {})
-    print(f"摘要: {intent.get('summary', 'N/A')}")
-    print(f"接口: {', '.join(intent.get('interfaces', []))}")
-    print(f"时钟: {intent.get('clock', 'N/A')}")
-    print(f"复位: {intent.get('reset', 'N/A')}")
-    
-    print("\n" + "=" * 60)
-    print("2. 架构设计 (Architect Agent)")
-    print("=" * 60)
-    architecture = result.get("architecture", {})
-    hierarchy = architecture.get("hierarchy", {})
-    top = hierarchy.get("top", {})
-    print(f"顶层模块: {top.get('name', 'N/A')}")
-    print(f"子模块数量: {len(hierarchy.get('modules', []))}")
-    if hierarchy.get("modules"):
-        print("子模块列表:")
-        for module in hierarchy.get("modules", []):
-            print(f"  - {module.get('name', 'N/A')} ({module.get('type', 'N/A')})")
-    
-    print("\n" + "=" * 60)
-    print("3. PPA评估 (PPA Estimator)")
-    print("=" * 60)
-    ppa = result.get("ppa", {})
-    area = ppa.get("area", {})
-    power = ppa.get("power", {})
-    timing = ppa.get("timing", {})
-    
-    print(f"面积: {area.get('total_gates', 'N/A')} GE")
-    print(f"  - 寄存器: {area.get('breakdown', {}).get('registers', 'N/A')}")
-    print(f"  - 组合逻辑: {area.get('breakdown', {}).get('combinational', 'N/A')}")
-    
-    print(f"\n功耗: {power.get('total_mw', 'N/A')} mW")
-    print(f"  - 动态功耗: {power.get('dynamic_mw', 'N/A')} mW")
-    print(f"  - 静态功耗: {power.get('static_mw', 'N/A')} mW")
-    
-    print(f"\n时序: 最大频率 {timing.get('max_freq_mhz', 'N/A')} MHz")
-    critical_path = timing.get("critical_path", {})
-    print(f"  - 关键路径延迟: {critical_path.get('delay_ns', 'N/A')} ns")
-    print(f"  - 时序裕量: {critical_path.get('slack_ns', 'N/A')} ns")
-    
-    print(f"\n可行性评级: {ppa.get('feasibility', 'N/A').upper()}")
-    
-    warnings = ppa.get("warnings", [])
-    if warnings:
-        print("\n警告信息:")
-        for warning in warnings:
-            severity = warning.get("severity", "info").upper()
-            message = warning.get("message", "")
-            print(f"  [{severity}] {message}")
-    
-    print("\n" + "=" * 60)
-    print("工作流完成！")
-    print("=" * 60)

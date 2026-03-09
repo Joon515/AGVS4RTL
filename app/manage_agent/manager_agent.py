@@ -1,14 +1,10 @@
 """Manager Agent for module orchestration and state progression.
 
-This module implements a static, deterministic manager for the current version.
-It focuses on:
+This module focuses on:
 1. Module/test state initialization
 2. Bottom-up scheduling (leaf -> mid -> top)
 3. Retry and loop budget bookkeeping
-4. Deferred graph-validation state writeback (AST-only boundary)
-
-Non-static tests and graph-structure execution are intentionally deferred to the
-next version, while preserving AST-based structured inputs.
+4. Runtime validation state writeback (AST input boundary)
 """
 
 from __future__ import annotations
@@ -62,7 +58,7 @@ class ManagerAgent:
             "next_module": next_module,
             "execution_plan": execution_plan,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            "version_scope": "static_only_v1",
+            "version_scope": "runtime",
         }
 
         return {
@@ -226,12 +222,12 @@ class ManagerAgent:
         return None, "all_modules_settled"
 
     def _build_validation_stub(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Build deferred validation payload with AST boundary preserved."""
+        """Build runtime validation payload with AST boundary preserved."""
         ast_extraction = state.get("ast_extraction")
 
         return {
-            "status": "deferred",
-            "scope": "graph_and_non_static_tests_next_version",
+            "status": "not_executed",
+            "scope": "runtime_validation",
             "method_boundary": {
                 "structured_input": "ast",
                 "regex_for_semantics": False,

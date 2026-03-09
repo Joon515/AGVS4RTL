@@ -15,13 +15,26 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
+
 from app.ui.config_store import ConfigStore
 from app.workflow import run_full_codegen_workflow
 
 
+def _workspace_root() -> Path:
+    """Resolve workspace root for local and container execution."""
+    app_root = Path("/app")
+    return app_root if app_root.exists() else PROJECT_ROOT
+
+
 def configure_models_for_smoke() -> None:
     """Temporarily set expected model roles in local config."""
-    root = Path("/app")
+    root = _workspace_root()
     store = ConfigStore(root)
     config = store.load_config()
     agents = config.setdefault("agents", {})
@@ -59,6 +72,7 @@ def configure_models_for_smoke() -> None:
 
 
 def main() -> int:
+    """Execute smoke test and persist output artifacts."""
     configure_models_for_smoke()
 
     requirement = "设计一个最简单的8位乘法器。"
@@ -98,12 +112,13 @@ def main() -> int:
         "verification": verification,
         "round_outputs": round_outputs,
     }
-    out_path = Path("/app/data/workspace/test_output/dual_model_codegen_smoke.json")
+    workspace_root = _workspace_root()
+    out_path = workspace_root / "data/workspace/test_output/dual_model_codegen_smoke.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print("saved=", out_path)
 
-    history_path = Path("/app/data/workspace/test_output/dual_model_codegen_history.jsonl")
+    history_path = workspace_root / "data/workspace/test_output/dual_model_codegen_history.jsonl"
     history_entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "dual_model_codegen_smoke",

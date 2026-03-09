@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +30,32 @@ STATUS_ICON = {
     "failed": "😅",
 }
 
+
+def _sanitize_surrogates(text: str) -> str:
+    """Remove surrogate characters that break UTF-8 encoding.
+
+    Docker containers without proper locale settings may produce
+    surrogate escapes (U+DC80..U+DCFF) when reading stdin. This
+    helper re-encodes via ``surrogateescape`` then decodes back
+    to clean UTF-8, replacing any undecodable bytes with U+FFFD.
+    """
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+
+
+def _deep_sanitize(obj: Any) -> Any:
+    """Recursively sanitize surrogates in all strings within a data structure."""
+    if isinstance(obj, str):
+        return _sanitize_surrogates(obj)
+    if isinstance(obj, dict):
+        return {_sanitize_surrogates(k) if isinstance(k, str) else k: _deep_sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_sanitize(item) for item in obj]
+    return obj
+
 DEFAULT_AGENTS = [
     "pre_agent",
     "architecture_agent",
@@ -45,12 +74,13 @@ class TUIApp:
     def __init__(self, workspace_root: Optional[Path] = None) -> None:
         self.console = Console()
         self.workspace_root = workspace_root or Path.cwd()
-        
+
         # File paths
         self.tasks_file = self.workspace_root / "data" / "tasks.json"
         self.architecture_file = self.workspace_root / "data" / "architecture.txt"
         self.logs_dir = self.workspace_root / "data" / "log"
-        
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
         self.intent_defaults: Dict[str, Any] = {
             "language": "zh",
             "target_language": "verilog",
@@ -60,6 +90,42 @@ class TUIApp:
         }
         self.config_store = ConfigStore(self.workspace_root)
         self.agent_config = self.config_store.load_config()
+        self.logger = self._build_logger()
+        self._log_event("tui_initialized", workspace_root=str(self.workspace_root))
+
+    def _build_logger(self) -> logging.Logger:
+        """Create a file logger for TUI runtime events under ``data/log``."""
+
+        logger = logging.getLogger("agvs4rtl.tui")
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+        log_file = self.logs_dir / "tui.log"
+        target_path = str(log_file)
+        has_target_handler = any(
+            isinstance(handler, logging.FileHandler)
+            and getattr(handler, "baseFilename", "") == target_path
+            for handler in logger.handlers
+        )
+
+        if not has_target_handler:
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            file_handler.setFormatter(
+                logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+            )
+            logger.addHandler(file_handler)
+
+        return logger
+
+    def _log_event(self, event: str, **context: Any) -> None:
+        """Write a structured TUI event for diagnostics and traceability."""
+
+        if context:
+            safe_ctx = {k: _sanitize_surrogates(v) if isinstance(v, str) else v for k, v in context.items()}
+            context_text = json.dumps(safe_ctx, ensure_ascii=False, sort_keys=True)
+            self.logger.info("%s | context=%s", event, context_text)
+            return
+        self.logger.info(event)
 
     def _read_multiline(self, title: str) -> str:
         """Read multiline input until an empty line is provided."""
@@ -67,7 +133,7 @@ class TUIApp:
         self.console.print(Panel.fit(title, title="输入说明"))
         lines: List[str] = []
         while True:
-            line = self.console.input()
+            line = _sanitize_surrogates(self.console.input())
             if not line.strip():
                 break
             lines.append(line)
@@ -98,12 +164,68 @@ class TUIApp:
     def _save_payload(self, payload: Dict[str, Any]) -> Path:
         """Save payload JSON to data/workspace/preprocess."""
 
+        payload = _deep_sanitize(payload)
         out_dir = self.workspace_root / "data" / "workspace" / "preprocess"
         out_dir.mkdir(parents=True, exist_ok=True)
         request_id = payload.get("metadata", {}).get("request_id", "request")
         out_path = out_dir / f"{request_id}.json"
         out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._log_event("preprocess_saved", path=str(out_path), request_id=request_id)
         return out_path
+
+    def _save_workflow_output(
+        self,
+        preprocess_payload: Dict[str, Any],
+        workflow_result: Dict[str, Any],
+    ) -> Path:
+        """Save full workflow result JSON to data/workspace/test_output."""
+
+        out_dir = self.workspace_root / "data" / "workspace" / "test_output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        request_id = preprocess_payload.get("metadata", {}).get("request_id", "request")
+        out_path = out_dir / f"full_workflow_{request_id}.json"
+
+        result = dict(workflow_result)
+        result = _deep_sanitize(result)
+        metadata = dict(result.get("metadata", {}))
+        metadata.setdefault("preprocess_request_id", request_id)
+        metadata.setdefault("saved_at", datetime.now(timezone.utc).isoformat())
+        result["metadata"] = metadata
+
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._log_event(
+            "workflow_output_saved",
+            path=str(out_path),
+            request_id=request_id,
+        )
+        return out_path
+
+    def _run_full_workflow(
+        self,
+        requirement: str,
+        language: str,
+        source: str,
+    ) -> Dict[str, Any]:
+        """Run parser -> architect -> codegen -> verify workflow."""
+
+        try:
+            from app.workflow import run_full_codegen_workflow
+        except ModuleNotFoundError as exc:
+            # Support script-style launches like: python /app/app/main.py
+            if exc.name != "app":
+                raise
+            project_root = Path(__file__).resolve().parents[2]
+            project_root_str = str(project_root)
+            if project_root_str not in sys.path:
+                sys.path.insert(0, project_root_str)
+            from app.workflow import run_full_codegen_workflow
+
+        return run_full_codegen_workflow(
+            natural_language=requirement,
+            language=language,
+            source=source,
+        )
 
     def _load_tasks(self) -> List[Dict[str, Any]]:
         """Load task list from data/workspace/tasks.json if available."""
@@ -135,11 +257,20 @@ class TUIApp:
     def _load_logs(self) -> List[str]:
         """Load recent log files under data/log."""
 
-        log_dir = self.workspace_root / "data" / "log"
-        if not log_dir.exists():
+        if not self.logs_dir.exists():
             return []
-        files = sorted(log_dir.glob("**/*"), key=lambda p: p.stat().st_mtime, reverse=True)
-        return [str(p.relative_to(self.workspace_root)) for p in files if p.is_file()][:5]
+        files = sorted(self.logs_dir.glob("**/*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        recent: List[str] = []
+        for path in files:
+            if not path.is_file():
+                continue
+            try:
+                recent.append(str(path.relative_to(self.workspace_root)))
+            except ValueError:
+                recent.append(str(path))
+            if len(recent) >= 5:
+                break
+        return recent
 
     def _render_tasks_table(self, tasks: List[Dict[str, Any]]) -> Table:
         """Render task table with status icons and duration/loops."""
@@ -239,6 +370,7 @@ class TUIApp:
         if not summary:
             self.console.print("[red]需求描述不能为空。[/red]")
             return
+        self._log_event("input_received", summary=summary)
 
         self.intent_defaults["language"] = Prompt.ask(
             "输入语言", default=self.intent_defaults["language"]
@@ -265,6 +397,7 @@ class TUIApp:
             source="tui",
         )
         payload = result.to_state()
+        payload = _deep_sanitize(payload)
 
         self.console.print(Panel("预处理结果", title="完成"))
         self.console.print_json(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -272,6 +405,43 @@ class TUIApp:
         if Confirm.ask("保存结果到 data/workspace/preprocess？", default=True):
             out_path = self._save_payload(payload)
             self.console.print(f"已保存：{out_path}")
+
+        run_full = Confirm.ask(
+            "继续执行完整4-Agent流程并保存到 data/workspace/test_output？",
+            default=True,
+        )
+        if not run_full:
+            self._log_event("workflow_skipped_by_user")
+            return
+
+        self.console.print("[cyan]正在执行完整工作流，请稍候...[/cyan]")
+        self._log_event(
+            "workflow_start",
+            language=self.intent_defaults["language"],
+            source="tui-full-workflow",
+        )
+        try:
+            workflow_result = self._run_full_workflow(
+                requirement=summary,
+                language=self.intent_defaults["language"],
+                source="tui-full-workflow",
+            )
+        except Exception as exc:
+            self._log_event("workflow_failed", error=str(exc))
+            self.console.print(f"[red]完整工作流执行失败：{exc}[/red]")
+            return
+
+        out_path = self._save_workflow_output(payload, workflow_result)
+        self.console.print(f"[green]完整工作流结果已保存：{out_path}[/green]")
+
+        verification = workflow_result.get("verification", {})
+        score = verification.get("consistency_score")
+        status = verification.get("status")
+        self._log_event("workflow_done", status=status, score=score)
+        if score is not None or status is not None:
+            self.console.print(
+                f"[bold]验证结果[/bold] status={status or '-'} score={score if score is not None else '-'}"
+            )
 
     def _handle_logs(self) -> None:
         """Handle log entry view."""
@@ -282,7 +452,13 @@ class TUIApp:
             open_log = Confirm.ask("显示最新日志内容？", default=False)
             if open_log:
                 latest = self.workspace_root / logs[0]
-                self.console.print(Panel(latest.read_text(encoding="utf-8"), title=str(logs[0])))
+                try:
+                    content = latest.read_text(encoding="utf-8")
+                except OSError as exc:
+                    self._log_event("log_read_failed", path=str(latest), error=str(exc))
+                    self.console.print(f"[red]读取日志失败：{exc}[/red]")
+                    return
+                self.console.print(Panel(content, title=str(logs[0])))
 
     def _prompt_api_key(self, agent_name: str) -> str:
         """Force prompt API key from TUI."""
@@ -340,6 +516,7 @@ class TUIApp:
     def run(self) -> None:
         """Run the dashboard loop."""
 
+        self._log_event("tui_loop_started")
         while True:
             self.console.clear()
             self._render_dashboard()
@@ -351,6 +528,7 @@ class TUIApp:
             elif choice == "3":
                 self._handle_params()
             elif choice == "4":
+                self._log_event("tui_loop_exit")
                 break
             else:
                 self.console.print("[yellow]无效选项。[/yellow]")

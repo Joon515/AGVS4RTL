@@ -16,6 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
+
 from app.workflow import run_full_codegen_workflow
 
 
@@ -24,6 +31,12 @@ DEFAULT_CASES = [
     "设计一个最简单的8位有符号乘法器。",
     "实现一个最简单的8位组合逻辑乘法器模块。",
 ]
+
+
+def _workspace_root() -> Path:
+    """Resolve workspace root for local and container execution."""
+    app_root = Path("/app")
+    return app_root if app_root.exists() else PROJECT_ROOT
 
 
 def _extract_keywords(text: str) -> Dict[str, Any]:
@@ -237,6 +250,7 @@ def run_case_from_result(requirement: str, result: Dict[str, Any]) -> Dict[str, 
 
 
 def main() -> int:
+    """Run strict 4-agent consistency smoke checks."""
     parser = argparse.ArgumentParser(description="4-agent consistency smoke test")
     parser.add_argument("--case", action="append", help="Requirement text (repeatable)")
     parser.add_argument(
@@ -246,7 +260,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--output",
-        default="/app/data/workspace/test_output/four_agent_consistency_smoke.json",
+        default=str(_workspace_root() / "data/workspace/test_output/four_agent_consistency_smoke.json"),
         help="Output JSON report path",
     )
     args = parser.parse_args()

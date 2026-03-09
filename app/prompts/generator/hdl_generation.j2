@@ -1,14 +1,75 @@
-{# generator/hdl_generation.j2 - placeholder #}
+{#
+	模板: generator/hdl_generation.j2
+	用途: 将结构化 state 输入转换为完整可综合 Verilog RTL 代码
+	变量:
+		- payload (dict): codegen 输入快照
+		- summary (str): 需求摘要
+		- target_language (str): 目标 HDL 语言
+		- clock (str): 时钟信号名
+		- reset (str): 复位信号名
+		- interfaces (list): 接口关键词列表
+		- top_module (str): 顶层模块建议名
+		- constraints (dict): 硬约束与软约束
+		- architecture (dict): 架构分解结果
+		- ppa (dict): PPA 估计信息
+	输出: 纯 Verilog 文本（无 Markdown/无解释）
+#}
 {% extends "base.j2" %}
 
 {% block specific_instructions %}
-**任务**: 根据模块规范生成 HDL 代码。
+**任务**: 根据结构化输入状态，生成完整的、可综合的 Verilog RTL 实现代码。
+
+**本任务输出类型说明:**
+- 本任务输出为完整 HDL 源码，不是 JSON，不是骨架/框架。
+- 你必须生成**完整的功能实现**，包含所有信号声明、寄存器定义、状态机、数据通路等。
+- 请严格遵循 `output_format` 段约束。
+
+{% include "generator/style_guide.j2" %}
+
+**生成约束:**
+1. 仅输出 Verilog 代码，不要输出解释文字，不要输出 Markdown 代码块。
+2. 输出中必须包含且仅包含一个顶层 `module` 声明，命名为 `{{ top_module }}`。
+3. 顶层端口使用：`{{ clock }}` 与 `{{ reset }}`。
+4. **必须生成完整的功能实现**，包括但不限于：
+   - 完整的端口声明（所有数据、控制、接口信号）
+   - 寄存器与线网定义
+   - 组合逻辑与时序逻辑
+   - 状态机（如需要）
+   - 接口协议的完整实现（如 AXI-Lite 读写通道）
+   - 数据通路逻辑（如乘法器、加法器、流水线级等）
+5. 对于接口协议，必须包含完整的握手信号（如 AXI-Lite 的 AWVALID/AWREADY/WVALID/WREADY 等）。
+6. 代码必须可综合，不要使用 initial 块（测试用途除外）、系统任务等不可综合构造。
+7. 如果需求包含流水线，必须实现对应级数的流水线寄存器。
+8. 使用参数化设计，关键位宽使用 parameter/localparam 定义。
 {% endblock %}
 
 {% block context %}
-{{ context | default('') }}
+**输入摘要:**
+- summary: {{ summary }}
+- target_language: {{ target_language | default('verilog') }}
+- interfaces: {{ interfaces | default([]) | json_format }}
+- top_module: {{ top_module }}
+
+**硬约束:**
+{{ constraints.get("hard", []) | json_format }}
+
+**软约束:**
+{{ constraints.get("soft", []) | json_format }}
+
+**架构信息:**
+{{ architecture | json_format }}
+
+**PPA 信息:**
+{{ ppa | json_format }}
+
+**完整输入快照(JSON):**
+{{ payload | json_format }}
 {% endblock %}
 
 {% block output_format %}
-输出可综合 HDL 代码。
+**输出格式（严格执行）:**
+- 仅返回 Verilog 代码纯文本。
+- 禁止出现 ```verilog / ``` 代码块标记。
+- 禁止输出标题、注释说明段落或 JSON。
+- 代码必须是完整、可综合的实现，不是骨架或框架。
 {% endblock %}

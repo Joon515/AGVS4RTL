@@ -94,4 +94,13 @@ def resolve_agent_llm_config(
         "temperature": resolved_temperature,
         "api_key": resolved_api_key,
         "api_base": resolved_api_base,
+        "_debug": {
+            "has_api_key": bool(resolved_api_key),
+            "api_key_source": (
+                "explicit" if api_key else
+                "config_encrypted" if resolved_api_key and not api_key else
+                "env_var" if resolved_api_key else
+                "none"
+            ),
+        },
     }

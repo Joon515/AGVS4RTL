@@ -17,7 +17,7 @@
 - ✅ **Architect Agent**: `app/manage_agent/architect_agent.py` - RAG增强架构设计
 - ✅ **PPA Estimator**: `app/manage_agent/ppa_estimator.py` - 规则引擎评估
 - ✅ **工作流编排**: `app/workflow.py` - LangGraph 集成
-- ✅ **测试套件**: `app/dev_tests/run_pre_manager_workflow.py` - 5项测试
+- ✅ **测试套件**: `scripts/dev_tests/run_pre_manager_workflow.py` - 5项测试
 - ✅ **知识库**: 2个设计模式文档（AXI-Lite、FIFO）
 
 ## 🔄 工作流架构
@@ -65,10 +65,10 @@ State: {ppa, feasibility, warnings}
 ### 运行测试
 ```bash
 # 完整测试套件（主机环境）
-python app/dev_tests/run_pre_manager_workflow.py
+python scripts/dev_tests/run_pre_manager_workflow.py
 
 # Docker 单元测试（推荐）
-docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
+docker compose exec agent-core python3 scripts/dev_tests/run_pre_manager_unit_basic.py
 
 # 工作流演示
 python app/workflow.py
@@ -87,7 +87,7 @@ python app/workflow.py
 ### Docker 测试结果 (2026-02-14)
 
 ```bash
-$ docker compose exec agent-core python3 app/dev_tests/run_pre_manager_unit_basic.py
+$ docker compose exec agent-core python3 scripts/dev_tests/run_pre_manager_unit_basic.py
 
 ======================================================================
 📊 测试结果汇总
@@ -136,7 +136,7 @@ docs/
 └── rag/
     └── knowledge-base.md
 
-app/dev_tests/run_pre_manager_workflow.py  # 测试套件
+scripts/dev_tests/run_pre_manager_workflow.py  # 测试套件
 requirements.txt               # 更新：添加 chromadb, openai
 ```
 
