@@ -15,6 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List
 from uuid import uuid4
 
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
+
 from app.workflow import run_full_codegen_workflow
 
 
@@ -26,11 +33,19 @@ AGENT_DIR_MAP = {
 }
 
 
+def _workspace_root() -> Path:
+    """Resolve workspace root for local and container execution."""
+    app_root = Path("/app")
+    return app_root if app_root.exists() else PROJECT_ROOT
+
+
 def _utc_now() -> datetime:
+    """Return current UTC datetime."""
     return datetime.now(timezone.utc)
 
 
 def _safe_read_json(path: Path) -> Dict[str, Any]:
+    """Read JSON file and return an empty dict on any failure."""
     if not path.exists():
         return {}
     try:
@@ -40,6 +55,7 @@ def _safe_read_json(path: Path) -> Dict[str, Any]:
 
 
 def _build_fallback_verification(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a lightweight verification result from generated code content."""
     generated = result.get("generated_code", {})
     code = str(generated.get("content", ""))
     has_module = "module" in code
@@ -49,18 +65,28 @@ def _build_fallback_verification(result: Dict[str, Any]) -> Dict[str, Any]:
         "status": status,
         "consistency_score": score,
         "summary": "fallback verification from cached output",
-        "issues": [] if has_module else [{"type": "code_gap", "severity": "high", "message": "missing module", "evidence": "no module keyword"}],
+        "issues": []
+        if has_module
+        else [
+            {
+                "type": "code_gap",
+                "severity": "high",
+                "message": "missing module",
+                "evidence": "no module keyword",
+            }
+        ],
         "verified_at": _utc_now().isoformat(),
         "model": "fallback_rule_checker",
     }
 
 
 def _collect_result(requirement: str) -> Dict[str, Any]:
+    """Run full workflow and fall back to cached smoke output on failure."""
     try:
         return run_full_codegen_workflow(requirement, language="zh", source="record")
     except Exception as exc:
         print(f"[warn] live workflow failed, fallback to cached smoke output: {exc}")
-        cached = _safe_read_json(Path("/app/data/workspace/test_output/dual_model_codegen_smoke.json"))
+        cached = _safe_read_json(_workspace_root() / "data/workspace/test_output/dual_model_codegen_smoke.json")
         if not cached:
             raise RuntimeError("failed to run workflow and no cached smoke output found") from exc
         if not cached.get("verification"):
@@ -80,6 +106,7 @@ def _collect_result(requirement: str) -> Dict[str, Any]:
 
 
 def _collect_result_from_file(result_json: Path) -> Dict[str, Any]:
+    """Load workflow result from file and normalize verification payload."""
     loaded = _safe_read_json(result_json)
     if not loaded:
         raise RuntimeError(f"invalid or empty result json: {result_json}")
@@ -100,20 +127,23 @@ def _collect_result_from_file(result_json: Path) -> Dict[str, Any]:
 
 
 def _ensure_agent_dirs(base_dir: Path) -> Dict[str, Path]:
+    """Ensure output directories exist for every agent stage."""
     paths: Dict[str, Path] = {}
     for stage, folder in AGENT_DIR_MAP.items():
-        p = base_dir / folder
-        p.mkdir(parents=True, exist_ok=True)
-        paths[stage] = p
+        path = base_dir / folder
+        path.mkdir(parents=True, exist_ok=True)
+        paths[stage] = path
     return paths
 
 
 def _write_record(path: Path, payload: Dict[str, Any]) -> Path:
+    """Write one JSON record to disk."""
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 
 def generate_records(requirement: str, output_root: Path, result_json: Path | None = None) -> Dict[str, Any]:
+    """Generate per-agent records and return a manifest."""
     now = _utc_now()
     request_id = uuid4().hex
     timestamp = now.isoformat()
@@ -165,6 +195,7 @@ def generate_records(requirement: str, output_root: Path, result_json: Path | No
 
 
 def main() -> int:
+    """CLI entrypoint for round-record generation."""
     parser = argparse.ArgumentParser(description="Generate one-round per-agent output records")
     parser.add_argument(
         "--requirement",
@@ -173,7 +204,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--output-root",
-        default="/app/data/workspace/agent_round_records",
+        default=str(_workspace_root() / "data/workspace/agent_round_records"),
         help="Root directory for per-agent record folders",
     )
     parser.add_argument(

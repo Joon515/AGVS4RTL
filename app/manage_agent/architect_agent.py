@@ -8,6 +8,7 @@ from the knowledge base.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from ..llm_config import resolve_agent_llm_config
+from ..prompts.loader import PromptLoader
 from ..rag.vector_store import KnowledgeLoader
 
 
@@ -54,12 +56,20 @@ class ArchitectAgent:
         self.model_name = cfg["model_name"] or "deepseek-reasoner"
         self.temperature = cfg["temperature"] if cfg["temperature"] is not None else 0.2
         self.use_rag = use_rag
+        debug = cfg.get("_debug", {})
+        print(
+            f"[ArchitectAgent] Init: model={self.model_name}, "
+            f"api_base={cfg['api_base']}, "
+            f"has_key={debug.get('has_api_key')}, "
+            f"key_src={debug.get('api_key_source')}"
+        )
         
         # Initialize LLM
         self.llm = llm or ChatOpenAI(
-            model=model_name,
-            temperature=temperature,
-            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            model=self.model_name,
+            temperature=self.temperature,
+            openai_api_key=cfg["api_key"],
+            openai_api_base=cfg["api_base"],
         )
         self.prompt_loader = prompt_loader or PromptLoader()
         
@@ -110,10 +120,13 @@ class ArchitectAgent:
         ]
         
         try:
+            print(f"[ArchitectAgent] Calling LLM: model={self.model_name}")
             response = self.llm.invoke(messages)
-            architecture = self._parse_llm_response(response.content)
+            raw_content = str(getattr(response, "content", ""))
+            print(f"[ArchitectAgent] LLM response length: {len(raw_content)} chars")
+            architecture = self._parse_llm_response(raw_content)
         except Exception as e:
-            print(f"Warning: Architecture parsing failed: {e}")
+            print(f"[ArchitectAgent] Architecture LLM/parsing failed: {type(e).__name__}: {e}")
             architecture = self._fallback_architecture(intent)
         
         # Step 5: Add metadata
@@ -250,6 +263,19 @@ class ArchitectAgent:
         
         return architecture
     
+    @staticmethod
+    def _safe_module_name(raw: str) -> str:
+        """Sanitize raw text into a valid Verilog module name."""
+        import re
+        name = raw.lower().strip()
+        name = re.sub(r"[^a-z0-9_]+", "_", name)
+        name = re.sub(r"_+", "_", name).strip("_")
+        if not name:
+            name = "top_module"
+        if not name[0].isalpha() and name[0] != "_":
+            name = f"m_{name}"
+        return name[:64]
+
     def _fallback_architecture(self, intent: Dict[str, Any]) -> Dict[str, Any]:
         """Generate fallback architecture when LLM fails.
         
@@ -260,7 +286,7 @@ class ArchitectAgent:
             Basic architecture structure
         """
         summary = intent.get("summary", "design")
-        module_name = summary.lower().replace(" ", "_")[:30]
+        module_name = self._safe_module_name(summary)
         
         return {
             "version": 1,

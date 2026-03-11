@@ -6,6 +6,12 @@ services:
       dockerfile: deploy/app.Dockerfile
     image: hdl-agent-core:latest
     container_name: hdl_agent_core
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - PYTHONIOENCODING=utf-8
+    stdin_open: true
+    tty: true
     volumes:
       - ./app:/app/app          # 源码热重载
       - ./data:/app/data        # 数据共享

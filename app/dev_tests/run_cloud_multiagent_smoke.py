@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
+
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+ensure_project_root()
 
 from langchain_openai import ChatOpenAI
 
@@ -73,6 +79,7 @@ def multi_agent_smoke() -> bool:
 
 
 def main() -> int:
+    """Run cloud connectivity and pre-manager workflow smoke tests."""
     parser = argparse.ArgumentParser(description="Cloud + Multi-Agent smoke test")
     parser.add_argument(
         "--require-cloud",

@@ -11,6 +11,11 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# 设置 UTF-8 locale，避免 Python surrogateescape 导致中文输入损坏
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONIOENCODING=utf-8
+
 WORKDIR /app
 
 # 从构建上下文(根目录)复制依赖清单

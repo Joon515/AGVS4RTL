@@ -86,10 +86,11 @@ class VerifyAgent:
         ]
 
         try:
+            print(f"[VerifyAgent] Calling LLM: model={self.model_name}")
             response = self.llm.invoke(messages)
             report = self._parse_report(str(getattr(response, "content", "")))
         except Exception as exc:
-            print(f"Warning: Verify agent failed, using fallback. Error: {exc}")
+            print(f"[VerifyAgent] Verify agent failed, using fallback. Error: {type(exc).__name__}: {exc}")
             report = self._fallback_verify(payload)
 
         report.setdefault("verified_at", datetime.now(timezone.utc).isoformat())

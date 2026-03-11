@@ -13,6 +13,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+try:
+    from ._bootstrap import ensure_project_root
+except ImportError:
+    from _bootstrap import ensure_project_root
+
+PROJECT_ROOT = ensure_project_root()
+
 from langchain_openai import ChatOpenAI
 
 from app.llm_config import resolve_agent_llm_config
@@ -34,7 +41,14 @@ PROMPTS: List[Dict[str, str]] = [
 ]
 
 
+def _workspace_root() -> Path:
+    """Resolve workspace root for local and container execution."""
+    app_root = Path("/app")
+    return app_root if app_root.exists() else PROJECT_ROOT
+
+
 def run_probe(model_name: str, api_base: str | None, tag: str) -> Dict[str, Any]:
+    """Run probe prompts against a model and collect timing statistics."""
     cfg = resolve_agent_llm_config(
         "pre_agent",
         model_name=model_name,
@@ -88,6 +102,7 @@ def run_probe(model_name: str, api_base: str | None, tag: str) -> Dict[str, Any]
 
 
 def main() -> int:
+    """Run model behavior probe and write JSON report."""
     parser = argparse.ArgumentParser(description="Model behavior probe")
     parser.add_argument("--model", required=True, help="Model name, e.g. deepseek-chat")
     parser.add_argument("--api-base", default=None, help="OpenAI-compatible base URL")
@@ -96,7 +111,7 @@ def main() -> int:
 
     data = run_probe(args.model, args.api_base, args.tag)
 
-    out_dir = Path("/app/data/workspace/test_output")
+    out_dir = _workspace_root() / "data/workspace/test_output"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"model_probe_{args.tag}.json"
     out_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -1,0 +1,27 @@
+2026-03-09 12:17:29,474 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 12:19:10,068 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 12:20:49,751 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 12:20:49,751 | INFO | tui_loop_started
+2026-03-09 12:23:30,197 | INFO | input_received | context={"summary": "写一个AXI-lite接口的bf16乘法器,需要2级流水线"}
+2026-03-09 12:24:03,321 | INFO | preprocess_saved | context={"path": "/app/data/workspace/preprocess/aa155b79-6bdb-4c8f-b45e-cf79439f4afd.json", "request_id": "aa155b79-6bdb-4c8f-b45e-cf79439f4afd"}
+2026-03-09 12:24:06,549 | INFO | workflow_start | context={"language": "zh", "source": "tui-full-workflow"}
+2026-03-09 12:24:10,068 | INFO | workflow_output_saved | context={"path": "/app/data/workspace/test_output/full_workflow_aa155b79-6bdb-4c8f-b45e-cf79439f4afd.json", "request_id": "aa155b79-6bdb-4c8f-b45e-cf79439f4afd"}
+2026-03-09 12:24:10,069 | INFO | workflow_done | context={"score": 80, "status": "warn"}
+2026-03-09 13:08:55,393 | INFO | tui_loop_exit
+2026-03-09 13:08:59,230 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 13:08:59,230 | INFO | tui_loop_started
+2026-03-09 13:12:01,517 | INFO | input_received | context={"summary": "设计一个axi-lite接口的fp32乘法器"}
+2026-03-09 13:12:39,983 | INFO | preprocess_saved | context={"path": "/app/data/workspace/preprocess/881604ac-7dd2-4289-8383-15a1d06ed86b.json", "request_id": "881604ac-7dd2-4289-8383-15a1d06ed86b"}
+2026-03-09 13:12:45,810 | INFO | workflow_start | context={"language": "zh", "source": "tui-full-workflow"}
+2026-03-09 13:13:56,821 | INFO | workflow_output_saved | context={"path": "/app/data/workspace/test_output/full_workflow_881604ac-7dd2-4289-8383-15a1d06ed86b.json", "request_id": "881604ac-7dd2-4289-8383-15a1d06ed86b"}
+2026-03-09 13:13:56,823 | INFO | workflow_done | context={"score": 100, "status": "pass"}
+2026-03-09 13:39:41,958 | INFO | tui_loop_exit
+2026-03-09 13:39:44,793 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 13:39:44,793 | INFO | tui_loop_started
+2026-03-09 13:49:51,663 | INFO | tui_initialized | context={"workspace_root": "/app"}
+2026-03-09 13:49:51,663 | INFO | tui_loop_started
+2026-03-09 13:50:28,091 | INFO | input_received | context={"summary": "生成8*8的fp8矩阵乘法器"}
+2026-03-09 13:51:01,534 | INFO | preprocess_saved | context={"path": "/app/data/workspace/preprocess/948a3b46-57f5-4cbc-9105-3d57f5dfb04c.json", "request_id": "948a3b46-57f5-4cbc-9105-3d57f5dfb04c"}
+2026-03-09 13:51:04,816 | INFO | workflow_start | context={"language": "zh", "source": "tui-full-workflow"}
+2026-03-09 13:53:59,479 | INFO | workflow_output_saved | context={"path": "/app/data/workspace/test_output/full_workflow_948a3b46-57f5-4cbc-9105-3d57f5dfb04c.json", "request_id": "948a3b46-57f5-4cbc-9105-3d57f5dfb04c"}
+2026-03-09 13:53:59,481 | INFO | workflow_done | context={"score": 100, "status": "pass"}
