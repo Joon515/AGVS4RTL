@@ -1,0 +1,71 @@
+services:
+  # 消息中心：负责 Agent 间的任务中转
+  redis:
+    image: redis:7-alpine
+    container_name: agvs4rtl_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Parser Agent: 意图解析与路由
+  parser:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.parser
+    container_name: agvs4rtl_parser
+    user: "${USER_ID}:${GROUP_ID}"
+    environment:
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    # 使用 python -m celery 绕过二进制文件执行权限问题
+    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q parser_queue
+    volumes:
+      - ./src:/app/src
+      - ./shared_workspace:/app/shared_workspace:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Gen Agent: Architect + Coding (代码生成)
+  gen:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gen
+    container_name: agvs4rtl_gen
+    user: "${USER_ID}:${GROUP_ID}"
+    environment:
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q gen_queue
+    volumes:
+      - ./src:/app/src
+      - ./shared_workspace:/app/shared_workspace:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Verify Agent: Cocotb + iverilog (自动化验证)
+  verify:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.verify
+    container_name: agvs4rtl_verify
+    user: "${USER_ID}:${GROUP_ID}"
+    environment:
+      - PYTHONPATH=/app
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q verify_queue
+    volumes:
+      - ./src:/app/src
+      - ./shared_workspace:/app/shared_workspace:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+# 统一挂载卷，确保各容器间数据同步
+volumes:
+  shared_workspace:

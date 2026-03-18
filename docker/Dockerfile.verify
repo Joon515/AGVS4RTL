@@ -1,0 +1,20 @@
+# docker/Dockerfile.verify
+FROM agvs4rtl-base:latest
+
+# 1. 安装 EDA 工具链 (Icarus Verilog)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iverilog \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. 安装 Cocotb 验证框架
+RUN uv pip install --system cocotb cocotb-test pytest pyverilog
+
+# 3. 拷贝验证逻辑
+COPY ./src /app/src
+
+# 4. 启动 Verify 节点的 Celery Worker
+# 验证任务通常较慢，建议限制并发数 (--concurrency)
+ENV PYTHONPATH=/app
+# 以 Verify 为例
+CMD ["celery", "-A", "src.common.celery_app", "worker", "--loglevel=info", "-Q", "verify_queue", "--concurrency=2"]

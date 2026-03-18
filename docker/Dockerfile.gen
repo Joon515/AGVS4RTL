@@ -1,0 +1,19 @@
+# docker/Dockerfile.gen
+FROM agvs4rtl-base:latest
+
+# 1. 设置 Verible 版本变量 (更新于 2026-03-13)
+ENV VERIBLE_VERSION=v0.0-4053-g89d4d98a
+
+# 安装依赖并下载 Verible
+# 增加 --fail 参数可以让 curl 在 404 时直接报错，而不是把 404 页面喂给 tar
+RUN curl -L --fail https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz | tar xz -C /usr/local --strip-components=1
+
+# 2. 安装 Python 端的 Verilog 解析库
+RUN uv pip install --system pyverilog
+
+# 3. 拷贝生成逻辑
+COPY ./src /app/src
+
+ENV PYTHONPATH=/app
+# 以 Generator 为例
+CMD ["celery", "-A", "src.common.celery_app", "worker", "--loglevel=info", "-Q", "generator_queue"]

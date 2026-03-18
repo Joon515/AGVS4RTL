@@ -1,0 +1,43 @@
+# 使用轻量的 Python 运行时
+FROM python:3.11-slim-bullseye
+
+# 设置环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local/ \
+    PYTHONPATH=/app/src
+
+# 安装基础系统工具
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 uv (高性能包管理工具)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# 设置工作目录
+WORKDIR /app
+
+# 预创建共享空间目录 (权限控制预热)
+RUN mkdir -p /app/shared_workspace /app/src
+
+# 复制依赖描述文件
+COPY pyproject.toml . 
+
+# 使用 uv 同步安装核心依赖 (LangGraph, Pydantic, Celery, Semantic Router 等)
+# 注意：这里只安装所有 Agent 通用的库
+RUN uv pip install --system . 
+
+# 关键：预创建目录并开放权限
+RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
+
+# 安装依赖时，强制开启全局读取权限
+RUN uv pip install --system celery pydantic redis langgraph semantic-router
+
+# 核心修复：彻底放开 Python 库和二进制文件的读取/执行权限
+RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
+RUN chmod -R a+rx /usr/local/bin/
+
+WORKDIR /app
