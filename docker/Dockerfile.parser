@@ -1,15 +1,15 @@
 # docker/Dockerfile.parser
 FROM agvs4rtl-base:latest
 
-# 1. 安装 Parser 专用的轻量级 Python 依赖
-# 假设你在 base 里没装语义路由
-RUN uv pip install --system semantic-router langgraph celery
+# 1. 安装 Parser 专用的智能路由与状态机依赖 (去掉了 celery)
+RUN uv pip install --system semantic-router langgraph
 
 # 2. 拷贝 Parser 相关的业务逻辑
 COPY ./src /app/src
 
-# 3. 设置启动命令
-# 如果你使用 Celery 监听任务流
+# 3. 设置工作目录与环境变量
+WORKDIR /app
 ENV PYTHONPATH=/app
-# 以 Parser 为例
-CMD ["celery", "-A", "src.common.celery_app", "worker", "--loglevel=info", "-Q", "parser_queue"]
+
+# 4. 启动 FastAPI 服务 (Parser 中枢 API)
+CMD ["uvicorn", "src.parser.main:app", "--host", "0.0.0.0", "--port", "8000"]

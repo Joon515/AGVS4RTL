@@ -1,17 +1,5 @@
 services:
-  # 消息中心：负责 Agent 间的任务中转
-  redis:
-    image: redis:7-alpine
-    container_name: agvs4rtl_redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # Parser Agent: 意图解析与路由
+  # Parser Agent: LangGraph 中枢与意图解析 (端口 8001)
   parser:
     build:
       context: .
@@ -20,17 +8,14 @@ services:
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    # 使用 python -m celery 绕过二进制文件执行权限问题
-    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q parser_queue
+    ports:
+      - "8001:8000"
+    command: uvicorn src.parser.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
-    depends_on:
-      redis:
-        condition: service_healthy
 
-  # Gen Agent: Architect + Coding (代码生成)
+  # Gen Agent: Architect + Coding 接口服务 (端口 8002)
   gen:
     build:
       context: .
@@ -39,16 +24,14 @@ services:
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q gen_queue
+    ports:
+      - "8002:8000"
+    command: uvicorn src.generator.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
-    depends_on:
-      redis:
-        condition: service_healthy
 
-  # Verify Agent: Cocotb + iverilog (自动化验证)
+  # Verify Agent: 自动化验证接口服务 (端口 8003)
   verify:
     build:
       context: .
@@ -57,14 +40,12 @@ services:
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    command: python -m celery -A src.common.celery_app worker --loglevel=info -Q verify_queue
+    ports:
+      - "8003:8000"
+    command: uvicorn src.verify.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
-    depends_on:
-      redis:
-        condition: service_healthy
 
 # 统一挂载卷，确保各容器间数据同步
 volumes:

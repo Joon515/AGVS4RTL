@@ -20,7 +20,7 @@ AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
 | :--- | :--- | :--- |
 | **基础运行环境** | Python 3.11 + Docker | 确保跨平台的一致性与隔离性 |
 | **包管理** | **uv** | 高性能依赖同步，确保各镜像版本严格一致 |
-| **任务调度** | **Celery + Redis** | 异步处理长耗时 RTL 任务，支持重试与状态监控 |
+| **任务调度** | **LangGraph + FastAPI** | 基于 LangGraph 原生支持的 Checkpoint 实现状态机，FastAPI 包装服务流转数据 |
 | **Agent 编排** | **LangGraph** | 管理网状非线性逻辑，支持 Checkpoint 状态持久化 |
 | **意图路由** | **Semantic Router** | 极速语义过滤，降低 LLM 调用开销 |
 | **协议约束** | **Pydantic v2** | 定义强类型 JSON 协议，防止跨节点数据漂移 |
@@ -62,39 +62,13 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/19 8:45）进度
+### 本次 Commit（26/03/20 2:00）进度
 
-大幅度简化重构了模块架构和功能，明确了系统I/O控制方法：
-1. 重新分配智能体 Docker 架构，摒弃原 Parser Docker 的中心化调用，采用基于消息队列的事件分发。三大核心组件各自认领并维护专属的数据契约，实现高度解耦。
-2. 明确文档常态为只读增量状态，在触发全局重构前，所有 Agent 对 SharedWorkspace 中的文档仅做“增量追加”，绝不覆盖原文件，保留完整的迭代溯源能力。
-3. 追加大文本物理隔离措施，将用户输入的自然语言 Prompt 以及仿真日志直接落盘到 `shared_workspace` 缓存区，Celery 消息总线上仅传输轻量级的 JSON 指针和状态码。
-4. 统一了系统的 I/O 控制方法，Gen 和 Verify 容器在沙盒（缓存区）内闭环工作，最终资产的物理搬运由 Parser 作为 I/O 控制器统一执行。
-
-同时定义了四大核心 Pydantic 模型，严格约束跨容器通信：
-1. `BaseSyncMeta` (公共消息头)
-- **功能**: 分布式调用链追踪。
-- **核心字段**: 全局唯一的 `task_id`，当前 `iteration`（迭代轮次），`refactor_label`（重构级别），以及 `intent`（生成/测试/修复等核心意图）。
-2. `UserTaskSpec` (用户任务规约) - *Parser 持有*
-- **功能**: 下发给全网的标准化研发工单。
-- **核心字段**: 
-  - 提炼后的需求与红线约束 (`refined_requirements`, `design_rules`)。
-  - 沙盒工作区路由 (`workspace_dir`, `external_target_path`)。
-3. `SpecReg` (规格注册表) - *Gen Docker 产出*
-- **功能**: Architect 生成的强类型硬件施工蓝图。
-- **核心字段**: 
-  - 严格枚举的端口列表（`PortDef`，包含方向、类型、参数化位宽）。
-  - 时钟域与复位映射 (`clock_and_reset`)。
-  - 验证容器可直接调用的标准协议编组 (`ProtocolGroup`)。
-4. `VerifyRpt` (验证报告) - *Verify Docker 产出*
-- **功能**: 带有现场证据的诊断判决书。
-- **核心字段**: 
-  - 细粒度判决状态（`PASS`, `FAIL_SEMANTIC`, `FAIL_COMPILE`, `FAIL_SIMULATION`）。
-  - 错误快照（`ErrorSnapshot`），精准提取接口 Mismatch 和报错行号，拒绝大文本刷屏。
+使用 LangGraph + FastAPI 替代原有 Celery + Redis 方案，重新编写了 Dockerfile 和 docker-compose.yml，清理了部分目录文件。
 
 ---
 
 ### 其余待办事项
 
 - 目前为了调试方便采用 `chmod 777`，后期需细化 `shared_workspace` 的读写控制。
-- 需完成节点内部的逻辑搭建。
-- 定义各 Worker 内部的具体任务函数，接入 LLM API。
+- 目前明确了 Generator 生成产物结构为图状结构，需要根据结构细化 Generator 内部逻辑。
