@@ -59,15 +59,17 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/20 19:08）进度
+### 本次 Commit（26/03/21 4:47）进度
 
-使用 LangGraph + FastAPI 替代原有 Celery + Redis 方案；重新编写了 Dockerfile 和 docker-compose.yml；在 src/common/model.py 内新增对 FastAPI 响应的约束标准；整理文档内容与部分目录文件。
-
-当前容器编排已进一步收敛为三服务运行模式：基础环境不再单独维护为 base Dockerfile，只有 Parser 暴露宿主机端口，Generator 与 Verify 保持内网访问。
+1. 使用 LangGraph + FastAPI 替代原有 Celery + Redis 方向，清理 toml 中的历史遗留依赖。
+2. 将容器编排精简为三服务，且仅 parser 暴露宿主机端口作为统一外部入口。
+3. 删除过渡期遗留的 worker.py 与已不再参与构建链的 dockerfile.base 。
+4. 为三个服务补齐基础 main.py。
 
 ---
 
 ### 其余待办事项
 
+- 需首先在 parser 容器内搭好 LangGraph 环境。
 - 目前为了调试方便采用 `chmod 777`，后期需细化 `shared_workspace` 的读写控制。
 - 目前明确了 Generator 生成产物结构为图状结构，需要根据结构细化 Generator 内部逻辑。
