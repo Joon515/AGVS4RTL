@@ -6,12 +6,13 @@ AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
 
 ### 系统架构设计
 
-系统采用基于智能体自主管理消息队列的协同架构，通过消息队列实现 Agent 间的异步协作与任务路由。
+系统采用基于 FastAPI 的三服务协同架构，Parser 作为统一入口对外提供 API，Generator 与 Verify 仅在容器内部网络中提供服务。
 
 1. **Parser**: 负责意图解析、任务拆解与全局状态编排。
 2. **Generator**: 包含 Architect 与 Coding 两个子节点，负责从 Spec 生成到 RTL 代码实现。
 3. **Verify**: 负责执行从静态语义核查到动态仿真的全闭环验证，生成逻辑不依赖验证环境，验证逻辑仅依赖生成的 Spec 契约。
 4. **Data Plane**: 基于 `Shared Workspace` 物理挂载项目开发文件，动态配置 Agent 读取权限，实现标准化文件参考。
+5. **Container Topology**: 运行时仅保留 `parser`、`gen`、`verify` 三个容器；`parser` 暴露宿主机端口，`gen` 与 `verify` 只通过 Docker 内部网络被访问。
 
 ### 技术栈选择
 
@@ -32,12 +33,11 @@ AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
 ```Plaintext
 AGVS4RTL/
 ├── docker/                  # Docker 配置文件
-│   ├── Dockerfile.base      # 统一基础镜像 (uv-based)
 │   ├── Dockerfile.parser    # Parser 镜像
 │   ├── Dockerfile.gen       # Architect-Coding 镜像
 │   └── Dockerfile.verify    # Verify 镜像 (集成 iverilog/Cocotb)
 ├── src/                     # 业务源代码
-│   ├── common/              # Pydantic 协议、Celery App 配置、共享 Utils
+│   ├── common/              # Pydantic 协议模型与跨服务共享类型
 │   ├── parser/              # Parser Agent 逻辑 (LangGraph Nodes)
 │   ├── generator/           # 代码生成逻辑 (Architect & Coding)
 │   └── verify/              # 验证逻辑 (Static Check & Dynamic Sim)
@@ -45,7 +45,7 @@ AGVS4RTL/
 │   ├── specs/               # 结构化 Spec-Registry (JSON/YAML)
 │   ├── rtl/                 # 生成的 Verilog 源码
 │   └── sim/                 # 仿真产物 (VCD 波形, Log)
-├── docker-compose.yml       # 多容器编排
+├── docker-compose.yml       # 三容器编排 (仅 parser 对外暴露)
 ├── pyproject.toml           # 项目依赖定义
 └── .env                     # 权限与密钥环境变量
 ```
@@ -62,6 +62,8 @@ AGVS4RTL/
 ### 本次 Commit（26/03/20 19:08）进度
 
 使用 LangGraph + FastAPI 替代原有 Celery + Redis 方案；重新编写了 Dockerfile 和 docker-compose.yml；在 src/common/model.py 内新增对 FastAPI 响应的约束标准；整理文档内容与部分目录文件。
+
+当前容器编排已进一步收敛为三服务运行模式：基础环境不再单独维护为 base Dockerfile，只有 Parser 暴露宿主机端口，Generator 与 Verify 保持内网访问。
 
 ---
 

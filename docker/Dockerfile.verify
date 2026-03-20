@@ -1,22 +1,43 @@
 # docker/Dockerfile.verify
-FROM agvs4rtl-base:latest
+FROM python:3.11-slim-bullseye
 
-# 1. 安装 EDA 工具链 (Icarus Verilog 和 Make)
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local/ \
+    PYTHONPATH=/app
+
+# 1. 安装基础工具与 EDA 工具链
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    curl \
     iverilog \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 安装 Cocotb 验证框架与 AST 解析库
+# 2. 安装 uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# 3. 设置工作目录与共享空间
+WORKDIR /app
+RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
+
+# 4. 安装 Python 依赖
+COPY pyproject.toml .
+RUN uv pip install --system \
+    fastapi uvicorn httpx pydantic langgraph semantic-router
+RUN uv pip install --system . || true
 RUN uv pip install --system cocotb cocotb-test pytest pyverilog
 
-# 3. 拷贝验证逻辑
+# 5. 放宽运行所需执行权限
+RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
+RUN chmod -R a+rx /usr/local/bin/
+
+# 6. 拷贝验证逻辑
 COPY ./src /app/src
 
-# 4. 设置环境变量
+# 7. 启动 FastAPI 服务 (Verify 接口)
+# 用 --workers 2 限制并发验证任务数
 WORKDIR /app
 ENV PYTHONPATH=/app
-
-# 5. 启动 FastAPI 服务 (Verify 接口)
-# 用 --workers 2 限制并发验证任务数
 CMD ["uvicorn", "src.verify.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

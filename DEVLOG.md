@@ -3,3 +3,7 @@
 - 同步 `pyproject.toml` 依赖到 FastAPI 架构：移除 `celery`、`redis`，新增 `fastapi`、`uvicorn`、`httpx`，并将 `semantic-router` 作为核心依赖。
 - 删除过渡遗留文件 `src/parser/worker.py`（Celery 任务定义），避免与当前服务化入口模式混淆。
 - 说明：`parser` optional extra 暂保留为空扩展位，后续如需按服务拆分依赖可再补充。
+- 精简 docker-compose 回三服务运行形态，移除临时 `base` 服务。
+- 调整容器网络暴露策略，仅 `parser` 通过宿主机端口对外提供 IO，`gen` 与 `verify` 改为容器内 `expose`。
+- 为避免依赖临时 `base` 服务镜像构建，`parser`、`gen`、`verify` Dockerfile 现各自包含最小可构建基础环境。
+- 删除 `docker/Dockerfile.base`，避免仓库中保留已不再参与构建链的过时文件。

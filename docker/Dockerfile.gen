@@ -1,22 +1,46 @@
 # docker/Dockerfile.gen
-FROM agvs4rtl-base:latest
+FROM python:3.11-slim-bullseye
 
-# 1. 设置 Verible 版本变量 
-ENV VERIBLE_VERSION=v0.0-4053-g89d4d98a
+# 1. 设置基础环境与 Verible 版本变量 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONUNBUFFERED=1 \
+	UV_PROJECT_ENVIRONMENT=/usr/local/ \
+	PYTHONPATH=/app \
+	VERIBLE_VERSION=v0.0-4053-g89d4d98a
 
-# 安装依赖并下载 Verible (保留你的优秀实践：--fail 阻断 404 错误)
-RUN apt-get update && apt-get install -y curl tar && rm -rf /var/lib/apt/lists/*
+# 2. 安装系统工具
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	git \
+	build-essential \
+	curl \
+	tar \
+	&& rm -rf /var/lib/apt/lists/*
+
+# 3. 安装 uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# 4. 设置工作目录与共享空间
+WORKDIR /app
+RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
+
+# 5. 安装 Python 依赖
+COPY pyproject.toml .
+RUN uv pip install --system \
+	fastapi uvicorn httpx pydantic langgraph semantic-router
+RUN uv pip install --system . || true
+
+# 6. 下载 Verible 并补充 Verilog 解析库
 RUN curl -L --fail https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz | tar xz -C /usr/local --strip-components=1
-
-# 2. 安装 Python 端的 Verilog 解析库
 RUN uv pip install --system pyverilog
 
-# 3. 拷贝生成逻辑
+# 7. 放宽运行所需执行权限
+RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
+RUN chmod -R a+rx /usr/local/bin/
+
+# 8. 拷贝生成逻辑
 COPY ./src /app/src
 
-# 4. 设置环境变量
+# 9. 启动 FastAPI 服务 (Gen 接口)
 WORKDIR /app
 ENV PYTHONPATH=/app
-
-# 5. 启动 FastAPI 服务 (Gen 接口)
 CMD ["uvicorn", "src.generator.main:app", "--host", "0.0.0.0", "--port", "8000"]

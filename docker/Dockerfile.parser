@@ -1,15 +1,34 @@
 # docker/Dockerfile.parser
-FROM agvs4rtl-base:latest
+FROM python:3.11-slim-bullseye
 
-# 1. 安装 Parser 专用的智能路由与状态机依赖 (去掉了 celery)
-RUN uv pip install --system semantic-router langgraph
+ENV PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONUNBUFFERED=1 \
+	UV_PROJECT_ENVIRONMENT=/usr/local/ \
+	PYTHONPATH=/app
 
-# 2. 拷贝 Parser 相关的业务逻辑
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	git \
+	build-essential \
+	curl \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
+
+COPY pyproject.toml .
+RUN uv pip install --system \
+	fastapi uvicorn httpx pydantic langgraph semantic-router
+RUN uv pip install --system . || true
+
+RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
+RUN chmod -R a+rx /usr/local/bin/
+
 COPY ./src /app/src
 
-# 3. 设置工作目录与环境变量
 WORKDIR /app
 ENV PYTHONPATH=/app
 
-# 4. 启动 FastAPI 服务 (Parser 中枢 API)
 CMD ["uvicorn", "src.parser.main:app", "--host", "0.0.0.0", "--port", "8000"]
