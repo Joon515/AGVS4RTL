@@ -1,7 +1,6 @@
 # AGVS4RTL Remake Project
 
 AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
-该分支 (`r05en_remake`) 专注于全系统重构，旨在消除非线性协作导致的“代码史山”，建立稳固的工程化底座。
 
 ---
 
@@ -53,18 +52,16 @@ AGVS4RTL/
 
 ---
 
-### 本次重构计划改进
+### 未来改进项目
 
 1. 引入 **Verify-Coding 反馈回路**。系统优先进行语义空跑（Dry-run），通过后再启动基于 Icarus Verilog 的动态仿真，大幅提升无效生成的纠错效率。
 2. Architect 不再产生模糊描述，而是输出 **Spec-Registry (规格注册表)**。通过 Pydantic 强类型约束端口定义与协议，从源头解决接口不匹配问题。
-3. 通过 `.env` 注入 `USER_ID/GROUP_ID`，确保 Docker 容器内生成文件与宿主机权限对齐，消除跨容器读写障碍。
-4. 使用 Celery 队列隔离不同算力需求的任务，支持任务在多 Agent 间的非线性流转。
 
 ---
 
-### 本次 Commit（26/03/20 2:00）进度
+### 本次 Commit（26/03/20 19:08）进度
 
-使用 LangGraph + FastAPI 替代原有 Celery + Redis 方案，重新编写了 Dockerfile 和 docker-compose.yml，清理了部分目录文件。
+使用 LangGraph + FastAPI 替代原有 Celery + Redis 方案；重新编写了 Dockerfile 和 docker-compose.yml；在 src/common/model.py 内新增对 FastAPI 响应的约束标准；整理文档内容与部分目录文件。
 
 ---
 
