@@ -1,16 +1,26 @@
 services:
+  # --- 新增：统一底层环境 (只构建，不运行) ---
+  base:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.base
+    image: agvs4rtl-base
+
   # Parser Agent: LangGraph 中枢与意图解析 (端口 8001)
   parser:
     build:
       context: .
       dockerfile: docker/Dockerfile.parser
+    image: agvs4rtl-parser # 建议加上 image 名字明确对应关系
+    depends_on:
+      - base             # 强制在 base 构建完成后再构建
     container_name: agvs4rtl_parser
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
     ports:
       - "8001:8000"
-    command: uvicorn src.parser.main:app --host 0.0.0.0 --port 8000
+    command: python -m uvicorn src.parser.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
@@ -20,13 +30,16 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.gen
+    image: agvs4rtl-gen
+    depends_on:
+      - base
     container_name: agvs4rtl_gen
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
     ports:
       - "8002:8000"
-    command: uvicorn src.generator.main:app --host 0.0.0.0 --port 8000
+    command: python -m uvicorn src.generator.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
@@ -36,13 +49,16 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.verify
+    image: agvs4rtl-verify
+    depends_on:
+      - base
     container_name: agvs4rtl_verify
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
     ports:
       - "8003:8000"
-    command: uvicorn src.verify.main:app --host 0.0.0.0 --port 8000
+    command: python -m uvicorn src.verify.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
