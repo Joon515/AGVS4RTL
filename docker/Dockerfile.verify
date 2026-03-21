@@ -3,7 +3,6 @@ FROM python:3.11-slim-bullseye
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_PROJECT_ENVIRONMENT=/usr/local/ \
     PYTHONPATH=/app
 
 # 1. 安装基础工具与 EDA 工具链
@@ -15,28 +14,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 安装 uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# 3. 设置工作目录与共享空间
+# 2. 设置工作目录与共享空间
 WORKDIR /app
 RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
 
-# 4. 安装 Python 依赖
-COPY pyproject.toml .
-RUN uv pip install --system \
-    fastapi uvicorn httpx pydantic langgraph semantic-router
-RUN uv pip install --system . || true
-RUN uv pip install --system cocotb cocotb-test pytest pyverilog
+# 3. 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. 放宽运行所需执行权限
+# 4. 放宽运行所需执行权限
 RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
 RUN chmod -R a+rx /usr/local/bin/
 
-# 6. 拷贝验证逻辑
+# 5. 拷贝验证逻辑
 COPY ./src /app/src
 
-# 7. 启动 FastAPI 服务 (Verify 接口)
+# 6. 启动 FastAPI 服务 (Verify 接口)
 # 用 --workers 2 限制并发验证任务数
 WORKDIR /app
 ENV PYTHONPATH=/app

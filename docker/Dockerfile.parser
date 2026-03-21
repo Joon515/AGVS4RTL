@@ -3,7 +3,6 @@ FROM python:3.11-slim-bullseye
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
 	PYTHONUNBUFFERED=1 \
-	UV_PROJECT_ENVIRONMENT=/usr/local/ \
 	PYTHONPATH=/app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,16 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	curl \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
 WORKDIR /app
 
 RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
 
-COPY pyproject.toml .
-RUN uv pip install --system \
-	fastapi uvicorn httpx pydantic langgraph semantic-router
-RUN uv pip install --system . || true
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
 RUN chmod -R a+rx /usr/local/bin/

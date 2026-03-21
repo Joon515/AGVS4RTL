@@ -16,8 +16,8 @@
 - The repository is in a transition state from Celery/Redis to FastAPI/LangGraph; prefer current FastAPI-oriented patterns in Docker files and compose config.
 
 ## Build and Test
-- Local dependency install (uv-managed project):
-	- `uv pip install .`
+- Local dependency install:
+	- `pip install -r requirements.txt`
 - Build and run all services:
 	- `docker-compose up -d --build`
 - Stop services:
@@ -41,5 +41,5 @@
 
 ## Known Pitfalls
 - Compose commands reference `src.<module>.main:app`; some service entrypoint files may still be incomplete.
-- `pyproject.toml` still includes legacy dependencies (for example Celery/Redis) while Docker runtime focuses on FastAPI stack.
+- Keep `requirements.txt` and Dockerfile installs in sync to avoid runtime dependency drift.
 - Base image currently uses permissive `chmod -R 777` for development convenience; avoid relying on this behavior for security-sensitive changes.

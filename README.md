@@ -19,7 +19,7 @@ AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
 | 维度 | 选型 | 作用 |
 | :--- | :--- | :--- |
 | **基础运行环境** | Python 3.11 + Docker | 确保跨平台的一致性与隔离性 |
-| **包管理** | **uv** | 高性能依赖同步，确保各镜像版本严格一致 |
+| **包管理** | **pip + requirements.txt** | 使用标准依赖清单，便于环境复现与镜像构建 |
 | **任务调度** | **LangGraph + FastAPI** | 基于 LangGraph 原生支持的 Checkpoint 实现状态机，FastAPI 包装服务流转数据 |
 | **Agent 编排** | **LangGraph** | 管理网状非线性逻辑，支持 Checkpoint 状态持久化 |
 | **意图路由** | **Semantic Router** | 极速语义过滤，降低 LLM 调用开销 |
@@ -46,7 +46,7 @@ AGVS4RTL/
 │   ├── rtl/                 # 生成的 Verilog 源码
 │   └── sim/                 # 仿真产物 (VCD 波形, Log)
 ├── docker-compose.yml       # 三容器编排 (仅 parser 对外暴露)
-├── pyproject.toml           # 项目依赖定义
+├── requirements.txt         # Python 依赖定义
 └── .env                     # 权限与密钥环境变量
 ```
 
@@ -59,12 +59,9 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/21 4:47）进度
+### 本次 Commit（26/03/22 2:15）进度
 
-1. 使用 LangGraph + FastAPI 替代原有 Celery + Redis 方向，清理 toml 中的历史遗留依赖。
-2. 将容器编排精简为三服务，且仅 parser 暴露宿主机端口作为统一外部入口。
-3. 删除过渡期遗留的 worker.py 与已不再参与构建链的 dockerfile.base 。
-4. 为三个服务补齐基础 main.py。
+1. 将原容器内的 uv 包管理器降级为 pip，同步移除了`pyproject.toml`，新增`requirements.txt`，同步改造了 Dockerfile，测试模块间 healthy 状态传递正常，功能未受影响。
 
 ---
 

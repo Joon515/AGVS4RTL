@@ -4,7 +4,6 @@ FROM python:3.11-slim-bullseye
 # 1. 设置基础环境与 Verible 版本变量 
 ENV PYTHONDONTWRITEBYTECODE=1 \
 	PYTHONUNBUFFERED=1 \
-	UV_PROJECT_ENVIRONMENT=/usr/local/ \
 	PYTHONPATH=/app \
 	VERIBLE_VERSION=v0.0-4053-g89d4d98a
 
@@ -16,31 +15,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	tar \
 	&& rm -rf /var/lib/apt/lists/*
 
-# 3. 安装 uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# 4. 设置工作目录与共享空间
+# 3. 设置工作目录与共享空间
 WORKDIR /app
 RUN mkdir -p /app/shared_workspace /app/src && chmod -R 777 /app
 
-# 5. 安装 Python 依赖
-COPY pyproject.toml .
-RUN uv pip install --system \
-	fastapi uvicorn httpx pydantic langgraph semantic-router
-RUN uv pip install --system . || true
+# 4. 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 6. 下载 Verible 并补充 Verilog 解析库
+# 5. 下载 Verible
 RUN curl -L --fail https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz | tar xz -C /usr/local --strip-components=1
-RUN uv pip install --system pyverilog
 
-# 7. 放宽运行所需执行权限
+# 6. 放宽运行所需执行权限
 RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages
 RUN chmod -R a+rx /usr/local/bin/
 
-# 8. 拷贝生成逻辑
+# 7. 拷贝生成逻辑
 COPY ./src /app/src
 
-# 9. 启动 FastAPI 服务 (Gen 接口)
+# 8. 启动 FastAPI 服务 (Gen 接口)
 WORKDIR /app
 ENV PYTHONPATH=/app
 CMD ["uvicorn", "src.generator.main:app", "--host", "0.0.0.0", "--port", "8000"]
