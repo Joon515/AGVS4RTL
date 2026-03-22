@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from src.common.models import ApiResponse
+from src.common.models import ApiResponse, WorkflowRunRequest, WorkflowRunResult
+from src.parser.workflow import run_workflow
 
 
 class HealthStatus(BaseModel):
@@ -41,3 +42,20 @@ async def root() -> ApiResponse[HealthStatus]:
             detail="submit tasks through parser only",
         ),
     )
+
+
+@app.post("/v1/workflow/run", response_model=ApiResponse[WorkflowRunResult])
+async def run_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[WorkflowRunResult]:
+    try:
+        result = run_workflow(payload)
+        return ApiResponse(
+            status="success",
+            message="workflow completed",
+            data=result,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ApiResponse(
+            status="error",
+            message=f"workflow failed: {exc}",
+            data=None,
+        )

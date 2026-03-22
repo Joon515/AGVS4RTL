@@ -23,3 +23,11 @@
 - 兼容性复验：执行 `docker compose build` + `docker compose up -d --force-recreate` 完整重建，三服务均正常启动。
 - 联通性验证：外部 `http://localhost:8001/health` 返回 200；Parser 容器内访问 `gen:8000/health`、`verify:8000/health` 均返回 200，确认升级后依赖组合与当前服务骨架兼容。
 - 依赖策略回调：重新加回 `>=` 最低版本约束，并将下限提升至本轮验证可用的较新版本（覆盖 FastAPI/Pydantic/LangGraph 等），兼顾新特性可用性与安装稳定性。
+- 新增 Parser LangGraph 工作流骨架：`src/parser/workflow.py` 形成三容器主链 `parser_prepare -> gen_stateless -> verify_stateless -> finalize`，并在 verify 后按 `VerifyVerdict` 进行条件分支。
+- 新增 Parser 编排入口：`src/parser/main.py` 增加 `POST /v1/workflow/run`，统一触发状态机并返回执行轨迹 `trace`。
+- 将 Gen / Verify 节点定义为无状态服务：
+  - `src/generator/main.py` 增加 `POST /v1/generate`。
+  - `src/verify/main.py` 增加 `POST /v1/verify`。
+- 在 `src/common/models.py` 增补工作流协议模型：`WorkflowRunRequest`、`WorkTaskPayload`、`GenNodeOutput`、`VerifyTaskPayload`、`VerifyNodeOutput`、`WorkflowRunResult`。
+- Docker 内联通冒烟验证通过：调用 `POST /v1/workflow/run` 可返回 `finalize_success`，并包含 Gen/Verify 节点执行轨迹。
+- 备注：容器内 `compileall` 受共享卷 `__pycache__` 写权限影响，已改为“只编译不落盘”语法校验方式完成检查。

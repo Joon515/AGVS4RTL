@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from src.common.models import ApiResponse
+from src.common.models import ApiResponse, GenNodeOutput, WorkTaskPayload
 
 
 class HealthStatus(BaseModel):
@@ -39,5 +39,18 @@ async def root() -> ApiResponse[HealthStatus]:
             service="generator",
             state="ready",
             detail="intended for internal container calls",
+        ),
+    )
+
+
+@app.post("/v1/generate", response_model=ApiResponse[GenNodeOutput])
+async def stateless_generate(payload: WorkTaskPayload) -> ApiResponse[GenNodeOutput]:
+    rtl_path = f"{payload.workspace_dir}/rtl/{payload.top_module}.v"
+    return ApiResponse(
+        status="success",
+        message="stateless generation completed",
+        data=GenNodeOutput(
+            rtl_path=rtl_path,
+            summary=f"placeholder RTL plan generated for {payload.top_module}",
         ),
     )

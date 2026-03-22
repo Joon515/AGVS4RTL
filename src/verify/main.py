@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from src.common.models import ApiResponse
+from src.common.models import ApiResponse, VerifyNodeOutput, VerifyTaskPayload, VerifyVerdict
 
 
 class HealthStatus(BaseModel):
@@ -39,5 +39,19 @@ async def root() -> ApiResponse[HealthStatus]:
             service="verify",
             state="ready",
             detail="intended for internal container calls",
+        ),
+    )
+
+
+@app.post("/v1/verify", response_model=ApiResponse[VerifyNodeOutput])
+async def stateless_verify(payload: VerifyTaskPayload) -> ApiResponse[VerifyNodeOutput]:
+    report_path = f"{payload.task.workspace_dir}/sim/{payload.task.top_module}_report.json"
+    return ApiResponse(
+        status="success",
+        message="stateless verification completed",
+        data=VerifyNodeOutput(
+            verdict=VerifyVerdict.PASS,
+            summary=f"placeholder verify PASS for {payload.rtl_path}",
+            report_path=report_path,
         ),
     )

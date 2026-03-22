@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Dict, Optional, Any, Generic, TypeVar
+from typing import List, Dict, Optional, Any, Generic, TypeVar, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 import uuid
@@ -143,3 +143,53 @@ class ApiResponse(BaseModel, Generic[T]):
     status: str = Field(..., description="'success' 或 'error'")
     message: str = Field(..., description="状态描述信息")
     data: Optional[T] = Field(None, description="可选的业务载荷数据")
+
+
+# ==========================================
+# 8. 三服务工作流载荷模型 (Parser/Gen/Verify)
+# ==========================================
+
+class WorkflowRunRequest(BaseModel):
+    intent: IntentCategory = Field(default=IntentCategory.GEN_WITH_TEST, description="工作流意图")
+    top_module: str = Field(..., description="目标顶层模块名")
+    refined_requirements: List[str] = Field(default_factory=list, description="提炼后的需求列表")
+    workspace_dir: str = Field(default="/app/shared_workspace", description="共享工作区根目录")
+
+
+class WorkTaskPayload(BaseModel):
+    task_id: str = Field(..., description="工作流任务 ID")
+    intent: IntentCategory = Field(..., description="任务意图")
+    top_module: str = Field(..., description="目标顶层模块")
+    refined_requirements: List[str] = Field(default_factory=list, description="解析后的需求列表")
+    workspace_dir: str = Field(..., description="共享工作区根目录")
+
+
+class GenNodeOutput(BaseModel):
+    rtl_path: str = Field(..., description="生成 RTL 目标路径")
+    summary: str = Field(..., description="生成摘要")
+
+
+class VerifyTaskPayload(BaseModel):
+    task: WorkTaskPayload = Field(..., description="原始任务载荷")
+    rtl_path: str = Field(..., description="待验证 RTL 路径")
+
+
+class VerifyNodeOutput(BaseModel):
+    verdict: VerifyVerdict = Field(..., description="验证判定")
+    summary: str = Field(..., description="验证摘要")
+    report_path: Optional[str] = Field(None, description="验证报告路径")
+
+
+class WorkflowTraceStep(BaseModel):
+    node: str = Field(..., description="状态机节点名")
+    status: Literal["success", "error"] = Field(..., description="节点执行状态")
+    detail: str = Field(..., description="节点执行详情")
+
+
+class WorkflowRunResult(BaseModel):
+    task_id: str = Field(..., description="任务 ID")
+    final_stage: str = Field(..., description="最终节点")
+    success: bool = Field(..., description="工作流是否成功")
+    trace: List[WorkflowTraceStep] = Field(default_factory=list, description="节点执行轨迹")
+    gen_output: Optional[GenNodeOutput] = Field(None, description="生成节点输出")
+    verify_output: Optional[VerifyNodeOutput] = Field(None, description="验证节点输出")
