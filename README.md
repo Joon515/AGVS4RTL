@@ -59,9 +59,9 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/22 2:15）进度
+### 本次 Commit（26/03/23 4:02）进度
 
-1. 将原容器内的 uv 包管理器降级为 pip，同步移除了`pyproject.toml`，新增`requirements.txt`，同步改造了 Dockerfile，测试模块间 healthy 状态传递正常，功能未受影响。
+1. 修改`requirements.txt`中的包最低版本，提高至更新版本获取新特性。
 
 ---
 
