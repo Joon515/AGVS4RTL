@@ -59,14 +59,9 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/23 4:11）进度
+### 本次 Commit（26/03/23 17:07）进度
 
-1. 在 `src/parser/workflow.py` 搭建 LangGraph 工作流骨架，形成三容器状态机主链：`parser_prepare -> gen_stateless -> verify_stateless -> finalize`。
-2. 在 `src/parser/main.py` 新增 `POST /v1/workflow/run` 入口，由 Parser 统一编排并返回节点轨迹。
-3. 在 `src/generator/main.py` 新增无状态节点接口 `POST /v1/generate`。
-4. 在 `src/verify/main.py` 新增无状态节点接口 `POST /v1/verify`。
-5. 在 `src/common/models.py` 补齐工作流请求、节点载荷、节点输出和轨迹结果模型。
-6. 在 Docker 环境完成联通性冒烟验证：从 Parser 触发后可成功串联 Gen 与 Verify 节点并返回 `PASS`。
+1. 略微新增了`models.py`内关于`SpecReg`节点的规范项目，准备编写分层图结构设计逻辑。
 
 ---
 
