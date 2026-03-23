@@ -8,27 +8,27 @@ import uuid
 # 1. 强类型枚举库 (杜绝大模型幻觉与拼写错误)
 # ==========================================
 
-class RefactorLevel(str, Enum):
+class RefactorLevel(str, Enum):       # 重构程度标记
     NONE = "NONE"                     # 正常迭代
     CODE_REWRITE = "CODE_REWRITE"     # 局部重写代码 (保留原 Spec)
     ARCH_REFACTOR = "ARCH_REFACTOR"   # 架构重构 (推翻重新出规约)
 
-class IntentCategory(str, Enum):
+class IntentCategory(str, Enum):          # 任务意图分类
     GEN_WITH_TEST = "GEN_WITH_TEST"       # 全新生成 + 测试
     GEN_ONLY = "GEN_ONLY"                 # 仅生成代码
     MODIFY_EXISTING = "MODIFY_EXISTING"   # 修改已有代码 + 测试
     FIX_BUG = "FIX_BUG"                   # 基于报错日志修 Bug
     VERIFY_ONLY = "VERIFY_ONLY"           # 仅验证
 
-class PortDirection(str, Enum):
-    INPUT = "input"
-    OUTPUT = "output"
-    INOUT = "inout"
+class PortDirection(str, Enum):       # 端口方向
+    INPUT = "input"                   # 输入端口
+    OUTPUT = "output"                 # 输出端口
+    INOUT = "inout"                   # 输入输出端口
 
-class PortType(str, Enum):
-    WIRE = "wire"
-    REG = "reg"
-    LOGIC = "logic"
+class PortType(str, Enum):        # 端口类型
+    WIRE = "wire"                 # 线网类型
+    REG = "reg"                   # 寄存器类型
+    LOGIC = "logic"               # 逻辑类型
 
 class ResetType(str, Enum):
     SYNC_HIGH = "sync_high"
@@ -42,6 +42,7 @@ class VerifyVerdict(str, Enum):
     FAIL_COMPILE = "FAIL_COMPILE"           # 编译失败 (语法错误)
     FAIL_SIMULATION = "FAIL_SIMULATION"     # 仿真失败 (逻辑错误)
 
+
 # ==========================================
 # 2. 辅助函数
 # ==========================================
@@ -50,6 +51,7 @@ def generate_global_task_id() -> str:
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     short_uuid = uuid.uuid4().hex[:8]
     return f"TASK_{timestamp}_{short_uuid}"
+
 
 # ==========================================
 # 3. 核心基础类 (Message Header)
@@ -63,6 +65,7 @@ class BaseSyncMeta(BaseModel):
     refactor_label: RefactorLevel = Field(default=RefactorLevel.NONE, description="重构状态标记")
     intent: IntentCategory = Field(..., description="任务核心意图")
     top_module: str = Field(..., description="目标顶层模块名")
+
 
 # ==========================================
 # 4. UserTaskSpec (用户任务规约) - Parser 产出
@@ -79,8 +82,9 @@ class UserTaskSpec(BaseSyncMeta):
     target_protocol: Optional[str] = Field(None, description="强制总线协议约束")
     design_rules: List[str] = Field(default_factory=list, description="设计红线约束列表")
 
+
 # ==========================================
-# 5. SpecReg (规格注册表) - Gen (Architect) 产出
+# 5. SpecReg (规格注册表) - 包含分层图结构
 # ==========================================
 
 class ParameterDef(BaseModel):
@@ -105,6 +109,15 @@ class ProtocolGroup(BaseModel):
     role: str = Field(..., description="角色 (如 Master/Slave)")
     port_mapping: Dict[str, str] = Field(..., description="标准信号到物理端口的映射")
 
+class InstanceDef(BaseModel):
+    instance_name: str = Field(..., description="例化名，如 u_fetch_unit")
+    module_name: str = Field(..., description="调用的子模块名，如 fetch_unit")
+
+class NetConnection(BaseModel):
+    source: str = Field(..., description="驱动端，如 u_fetch_unit.o_valid 或 TOP.i_clk")
+    dest: str = Field(..., description="接收端，如 u_decode_unit.i_valid 或 TOP.o_res")
+    signal_name: str = Field(..., description="这根连线的线网命名，如 w_fetch_to_decode_valid")
+
 class SpecReg(BaseSyncMeta):
     module_description: str = Field(..., description="模块功能详述")
     parameters: List[ParameterDef] = Field(default_factory=list, description="参数列表")
@@ -112,9 +125,12 @@ class SpecReg(BaseSyncMeta):
     clock_and_reset: List[ClockResetDef] = Field(..., description="时钟域与复位定义")
     protocols: List[ProtocolGroup] = Field(default_factory=list, description="成品通信协议编组")
     verification_directives: List[str] = Field(default_factory=list, description="测试指导建议")
+    instances: List[InstanceDef] = Field(default_factory=list, description="例化的子节点。若为空则是叶子节点")
+    internal_connections: List[NetConnection] = Field(default_factory=list, description="节点间的网表连线")
+
 
 # ==========================================
-# 6. VerifyRpt (验证报告) - Verify 产出
+# 6. VerifyRpt (验证报告)
 # ==========================================
 
 class ErrorSnapshot(BaseModel):
@@ -126,12 +142,11 @@ class ErrorSnapshot(BaseModel):
 class VerifyRpt(BaseSyncMeta):
     verdict: VerifyVerdict = Field(..., description="验证最终判决")
     error_details: ErrorSnapshot = Field(default_factory=ErrorSnapshot, description="报错快照")
-    
     line_coverage_pct: Optional[float] = Field(None, description="行覆盖率")
     toggle_coverage_pct: Optional[float] = Field(None, description="翻转覆盖率")
-    
     sim_log_path: Optional[str] = Field(None, description="仿真日志物理路径")
     wave_file_path: Optional[str] = Field(None, description="波形文件物理路径")
+
 
 # ==========================================
 # 7. FastAPI 标准响应体 (新增)
@@ -139,14 +154,13 @@ class VerifyRpt(BaseSyncMeta):
 T = TypeVar('T')
 
 class ApiResponse(BaseModel, Generic[T]):
-    """所有 FastAPI 接口的标准化返回格式"""
     status: str = Field(..., description="'success' 或 'error'")
     message: str = Field(..., description="状态描述信息")
     data: Optional[T] = Field(None, description="可选的业务载荷数据")
 
 
 # ==========================================
-# 8. 三服务工作流载荷模型 (Parser/Gen/Verify)
+# 8. 三服务工作流载荷模型
 # ==========================================
 
 class WorkflowRunRequest(BaseModel):
@@ -155,7 +169,6 @@ class WorkflowRunRequest(BaseModel):
     refined_requirements: List[str] = Field(default_factory=list, description="提炼后的需求列表")
     workspace_dir: str = Field(default="/app/shared_workspace", description="共享工作区根目录")
 
-
 class WorkTaskPayload(BaseModel):
     task_id: str = Field(..., description="工作流任务 ID")
     intent: IntentCategory = Field(..., description="任务意图")
@@ -163,33 +176,30 @@ class WorkTaskPayload(BaseModel):
     refined_requirements: List[str] = Field(default_factory=list, description="解析后的需求列表")
     workspace_dir: str = Field(..., description="共享工作区根目录")
 
-
 class GenNodeOutput(BaseModel):
-    rtl_path: str = Field(..., description="生成 RTL 目标路径")
-    summary: str = Field(..., description="生成摘要")
-
+    spec_reg: SpecReg = Field(..., description="Architect 生成的强类型规格与图结构")
+    rtl_path: str = Field(..., description="Coder 生成的 RTL 文件在 SharedWorkspace 中的相对或绝对路径")
+    summary: str = Field(..., description="对本次生成动作的简短摘要 (方便日志打印)")
 
 class VerifyTaskPayload(BaseModel):
     task: WorkTaskPayload = Field(..., description="原始任务载荷")
-    rtl_path: str = Field(..., description="待验证 RTL 路径")
-
+    spec_reg: SpecReg = Field(..., description="用于核对接口和生成 Testbench 的基准图纸")
+    rtl_path: str = Field(..., description="待验证的 RTL 文件路径")
 
 class VerifyNodeOutput(BaseModel):
-    verdict: VerifyVerdict = Field(..., description="验证判定")
-    summary: str = Field(..., description="验证摘要")
-    report_path: Optional[str] = Field(None, description="验证报告路径")
-
+    """Verify 节点的返回载荷：强类型判决书 + 物理日志指针"""
+    report: VerifyRpt = Field(..., description="细粒度的验证报告与错误快照")
+    summary: str = Field(..., description="对本次验证动作的简短摘要")
 
 class WorkflowTraceStep(BaseModel):
     node: str = Field(..., description="状态机节点名")
     status: Literal["success", "error"] = Field(..., description="节点执行状态")
     detail: str = Field(..., description="节点执行详情")
 
-
 class WorkflowRunResult(BaseModel):
     task_id: str = Field(..., description="任务 ID")
     final_stage: str = Field(..., description="最终节点")
     success: bool = Field(..., description="工作流是否成功")
     trace: List[WorkflowTraceStep] = Field(default_factory=list, description="节点执行轨迹")
-    gen_output: Optional[GenNodeOutput] = Field(None, description="生成节点输出")
-    verify_output: Optional[VerifyNodeOutput] = Field(None, description="验证节点输出")
+    gen_output: Optional[GenNodeOutput] = Field(None, description="最终成功的生成载荷")
+    verify_output: Optional[VerifyNodeOutput] = Field(None, description="最终成功的验证载荷")
