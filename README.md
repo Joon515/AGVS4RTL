@@ -59,13 +59,20 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/23 17:07）进度
+### 本次 Commit（26/03/24 3:59）进度
 
-1. 略微新增了`models.py`内关于`SpecReg`节点的规范项目，准备编写分层图结构设计逻辑。
+1. 在 Parser 中完成 LangGraph 编排骨架重构，状态机主链更新为 `parser_initialize -> gen_stateless -> verify_stateless -> archive`。
+2. 新增任务冷启动逻辑：请求进入后立即创建 `Output/TASK_ID` 与 `shared_workspace/TASK_ID` 目录结构，并落盘原始输入与 `UserTaskSpec.json`。
+3. 完成轻量化模块通信改造：控制面保留 `WorkflowTraceStep`，数据面改为传递 `spec_file_path`、`rtl_path`、`sim_log_path` 等文件路径，不再在模块间传递大对象内容。
+4. 更新 `src/common/models.py` 工作流协议，补齐 `raw_input_text`、`input_filename`、`output_root`、`shared_workspace_root`、`max_iterations`、`iteration`、`spec_file_path`、`shared_task_dir` 等字段。
+5. 将 Gen 节点改为无状态落盘模式：生成 `SpecReg_iterN.json` 与 RTL 文件到共享任务目录，并仅回传路径型结果。
+6. 将 Verify 节点改为无状态校验模式：读取 `spec_file_path` 与 `rtl_path`，生成 `VerifyRpt`、仿真日志与报告文件，并将判定结果回传给 Parser。
+7. Parser 编排器已支持基于 `VerifyNodeOutput.report.verdict` 的重试/终止决策，任务结束后执行归档与共享工作区清理。
+8. 已在 Docker 环境完成语法校验与三容器联通验证，当前可返回 `final_stage=archive_success`。
 
 ---
 
 ### 其余待办事项
 
 - 目前为了调试方便采用 `chmod 777`，后期需细化 `shared_workspace` 的读写控制。
-- 目前明确了 Generator 生成产物结构为图状结构，需要根据结构细化 Generator 内部逻辑。
+- 当前 Gen / Verify 仍为占位实现，后续需接入真实的 Semantic Router、LLM 规约抽取、RTL 生成与仿真验证流程。

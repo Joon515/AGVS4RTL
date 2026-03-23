@@ -57,7 +57,7 @@ def generate_global_task_id() -> str:
 # 3. 核心基础类 (Message Header)
 # ==========================================
 
-class BaseSyncMeta(BaseModel):
+class BaseSyncMeta(BaseModel):          # 所有核心数据模型的基类，包含全局唯一 ID 和时间戳
     model_config = ConfigDict(strict=True)
 
     task_id: str = Field(default_factory=generate_global_task_id, description="全局唯一流水号")
@@ -164,30 +164,34 @@ class ApiResponse(BaseModel, Generic[T]):
 # ==========================================
 
 class WorkflowRunRequest(BaseModel):
-    intent: IntentCategory = Field(default=IntentCategory.GEN_WITH_TEST, description="工作流意图")
+    intent: Optional[IntentCategory] = Field(default=None, description="工作流意图；为空时由 Parser 路由判定")
     top_module: str = Field(..., description="目标顶层模块名")
     refined_requirements: List[str] = Field(default_factory=list, description="提炼后的需求列表")
-    workspace_dir: str = Field(default="/app/shared_workspace", description="共享工作区根目录")
+    raw_input_text: str = Field(default="", description="原始自然语言输入")
+    input_filename: str = Field(default="request.txt", description="原始输入落盘文件名")
+    output_root: str = Field(default="/app/Output", description="输出归档根目录")
+    shared_workspace_root: str = Field(default="/app/shared_workspace", description="共享工作区根目录")
+    max_iterations: int = Field(default=2, ge=1, le=10, description="最大迭代轮次")
 
 class WorkTaskPayload(BaseModel):
     task_id: str = Field(..., description="工作流任务 ID")
+    iteration: int = Field(default=0, description="当前迭代轮次")
     intent: IntentCategory = Field(..., description="任务意图")
     top_module: str = Field(..., description="目标顶层模块")
-    refined_requirements: List[str] = Field(default_factory=list, description="解析后的需求列表")
-    workspace_dir: str = Field(..., description="共享工作区根目录")
+    spec_file_path: str = Field(..., description="UserTaskSpec 文件路径")
+    shared_task_dir: str = Field(..., description="共享工作区任务目录")
 
 class GenNodeOutput(BaseModel):
-    spec_reg: SpecReg = Field(..., description="Architect 生成的强类型规格与图结构")
+    spec_file_path: str = Field(..., description="SpecReg 文件路径")
     rtl_path: str = Field(..., description="Coder 生成的 RTL 文件在 SharedWorkspace 中的相对或绝对路径")
     summary: str = Field(..., description="对本次生成动作的简短摘要 (方便日志打印)")
 
 class VerifyTaskPayload(BaseModel):
     task: WorkTaskPayload = Field(..., description="原始任务载荷")
-    spec_reg: SpecReg = Field(..., description="用于核对接口和生成 Testbench 的基准图纸")
+    spec_file_path: str = Field(..., description="用于核对接口和生成 Testbench 的 SpecReg 文件路径")
     rtl_path: str = Field(..., description="待验证的 RTL 文件路径")
 
 class VerifyNodeOutput(BaseModel):
-    """Verify 节点的返回载荷：强类型判决书 + 物理日志指针"""
     report: VerifyRpt = Field(..., description="细粒度的验证报告与错误快照")
     summary: str = Field(..., description="对本次验证动作的简短摘要")
 

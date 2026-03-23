@@ -31,3 +31,14 @@
 - 在 `src/common/models.py` 增补工作流协议模型：`WorkflowRunRequest`、`WorkTaskPayload`、`GenNodeOutput`、`VerifyTaskPayload`、`VerifyNodeOutput`、`WorkflowRunResult`。
 - Docker 内联通冒烟验证通过：调用 `POST /v1/workflow/run` 可返回 `finalize_success`，并包含 Gen/Verify 节点执行轨迹。
 - 备注：容器内 `compileall` 受共享卷 `__pycache__` 写权限影响，已改为“只编译不落盘”语法校验方式完成检查。
+
+# 2026-03-24
+
+- 按 Parser 技术定义重构状态机行为：新增任务冷启动节点，接收请求后立即创建 `/Output/TASK_ID/{Origin,Archive,Result}` 与 `/shared_workspace/TASK_ID/{specs,rtl,sim}` 目录并落盘原始输入。
+- Parser 语义路由新增占位策略：当 `WorkflowRunRequest.intent` 为空时，基于 `raw_input_text` 关键词判定 `IntentCategory`（fix/verify/modify/default）。
+- 轻量通信改造完成：模块间传输从大对象切换为路径协议，`WorkTaskPayload` 传递 `spec_file_path` + `iteration` + `shared_task_dir`，Gen/Verify 通过文件路径读取上下文。
+- Gen 无状态节点升级：生成 `SpecReg_iterN.json` 与 RTL 文件并写入共享任务目录，仅回传 `spec_file_path` 与 `rtl_path`。
+- Verify 无状态节点升级：读取 `spec_file_path` 与 `rtl_path` 做存在性校验，产出 `VerifyRpt`（含 `verdict` 与 `error_details`）并写入 `sim` 目录。
+- Parser 编排器支持迭代判定：依据 `VerifyNodeOutput.report.verdict` 决策 PASS 归档、FAIL 重试或失败归档；达到最大轮次后终止。
+- 归档与清理落地：任务结束后将共享工作区产物复制到 `Output/TASK_ID/Result` 或 `Archive`，随后清理 `shared_workspace/TASK_ID`。
+- Docker 联通复验通过：`/v1/workflow/run` 返回 `final_stage=archive_success`，轨迹覆盖 `parser_initialize -> gen_stateless -> verify_stateless -> archive_success`。
