@@ -9,7 +9,7 @@ AGVS4RTL 是一个面向 RTL 自动生成与验证的多 Agent 系统。
 系统采用基于 FastAPI 的三服务协同架构，Parser 作为统一入口对外提供 API，Generator 与 Verify 仅在容器内部网络中提供服务。
 
 1. **Parser**: 负责意图解析、任务拆解与全局状态编排。
-2. **Generator**: 包含 Architect 与 Coding 两个子节点，负责从 Spec 生成到 RTL 代码实现。
+2. **Generator**: 包含 Architect 与 Coding 两个子节点，内部基于 LangGraph 维持局部状态机，将抽象需求按图结构 (Graph) 逐步细化为 RTL 代码实现。
 3. **Verify**: 负责执行从静态语义核查到动态仿真的全闭环验证，生成逻辑不依赖验证环境，验证逻辑仅依赖生成的 Spec 契约。
 4. **Data Plane**: 基于 `Shared Workspace` 物理挂载项目开发文件，动态配置 Agent 读取权限，实现标准化文件参考。
 5. **Container Topology**: 运行时仅保留 `parser`、`gen`、`verify` 三个容器；`parser` 暴露宿主机端口，`gen` 与 `verify` 只通过 Docker 内部网络被访问。
@@ -59,7 +59,7 @@ AGVS4RTL/
 
 ---
 
-### 本次 Commit（26/03/24 3:59）进度
+### 最新开发进度
 
 1. 在 Parser 中完成 LangGraph 编排骨架重构，状态机主链更新为 `parser_initialize -> gen_stateless -> verify_stateless -> archive`。
 2. 新增任务冷启动逻辑：请求进入后立即创建 `Output/TASK_ID` 与 `shared_workspace/TASK_ID` 目录结构，并落盘原始输入与 `UserTaskSpec.json`。
@@ -69,6 +69,8 @@ AGVS4RTL/
 6. 将 Verify 节点改为无状态校验模式：读取 `spec_file_path` 与 `rtl_path`，生成 `VerifyRpt`、仿真日志与报告文件，并将判定结果回传给 Parser。
 7. Parser 编排器已支持基于 `VerifyNodeOutput.report.verdict` 的重试/终止决策，任务结束后执行归档与共享工作区清理。
 8. 已在 Docker 环境完成语法校验与三容器联通验证，当前可返回 `final_stage=archive_success`。
+9. 重构 `SpecReg` 为类图架构（Graph Structure），引入 `RtlNode` 与 `RtlEdge`，支持基于 `NodeType` 的渐进式节点细化，约束大模型生成硬件代码时的逻辑发散。
+10. 在 Gen 模块内部引入 LangGraph 构建工作流（包含 `init_context`, `architect`, `coder`, `finalize` 节点），实现读取历史 `VerifyRpt` 后的多轮反思与增量修复。
 
 ---
 
