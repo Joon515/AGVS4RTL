@@ -42,6 +42,11 @@ class VerifyVerdict(str, Enum):
     FAIL_COMPILE = "FAIL_COMPILE"           # 编译失败 (语法错误)
     FAIL_SIMULATION = "FAIL_SIMULATION"     # 仿真失败 (逻辑错误)
 
+class NodeType(str, Enum):            # RTL 节点类型
+    INSTANCE = "instance"             # 未完全细化的子模块实例
+    COMBINATIONAL = "combinational"   # 纯组合逻辑叶子节点
+    SEQUENTIAL = "sequential"         # 基础时序逻辑叶子节点
+
 
 # ==========================================
 # 2. 辅助函数
@@ -109,14 +114,18 @@ class ProtocolGroup(BaseModel):
     role: str = Field(..., description="角色 (如 Master/Slave)")
     port_mapping: Dict[str, str] = Field(..., description="标准信号到物理端口的映射")
 
-class InstanceDef(BaseModel):
-    instance_name: str = Field(..., description="例化名，如 u_fetch_unit")
-    module_name: str = Field(..., description="调用的子模块名，如 fetch_unit")
+class RtlNode(BaseModel):
+    node_id: str = Field(..., description="节点唯一标识 (如例化名 u_fetch_unit 或逻辑块名 blk_adder)")
+    node_type: NodeType = Field(default=NodeType.INSTANCE, description="节点类型")
+    module_name: Optional[str] = Field(None, description="若是子模块例化，对应的模块名")
+    description: str = Field("", description="节点功能描述与内部逻辑说明")
+    is_leaf: bool = Field(False, description="是否为不可再分的叶子节点 (纯组合逻辑或基础时序逻辑)")
 
-class NetConnection(BaseModel):
-    source: str = Field(..., description="驱动端，如 u_fetch_unit.o_valid 或 TOP.i_clk")
-    dest: str = Field(..., description="接收端，如 u_decode_unit.i_valid 或 TOP.o_res")
-    signal_name: str = Field(..., description="这根连线的线网命名，如 w_fetch_to_decode_valid")
+class RtlEdge(BaseModel):
+    source: str = Field(..., description="驱动端节点及端口，格式为 <node_id>.<port> 或 TOP.<port>")
+    target: str = Field(..., description="接收端节点及端口，格式为 <node_id>.<port> 或 TOP.<port>")
+    signal_name: str = Field(..., description="连线使用的线网名称 (wire/reg 名称)")
+    width: str = Field(default="1", description="连线位宽")
 
 class SpecReg(BaseSyncMeta):
     module_description: str = Field(..., description="模块功能详述")
@@ -125,8 +134,8 @@ class SpecReg(BaseSyncMeta):
     clock_and_reset: List[ClockResetDef] = Field(..., description="时钟域与复位定义")
     protocols: List[ProtocolGroup] = Field(default_factory=list, description="成品通信协议编组")
     verification_directives: List[str] = Field(default_factory=list, description="测试指导建议")
-    instances: List[InstanceDef] = Field(default_factory=list, description="例化的子节点。若为空则是叶子节点")
-    internal_connections: List[NetConnection] = Field(default_factory=list, description="节点间的网表连线")
+    nodes: List[RtlNode] = Field(default_factory=list, description="类图架构的节点列表 (子模块或逻辑块)")
+    edges: List[RtlEdge] = Field(default_factory=list, description="类图架构的连线列表 (数据流与控制流)")
 
 
 # ==========================================

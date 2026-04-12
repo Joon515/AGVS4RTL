@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import operator
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
 
 import httpx
 from langgraph.graph import END, START, StateGraph
@@ -26,7 +27,7 @@ from src.common.models import (
 class WorkflowState(TypedDict):
     request: WorkflowRunRequest
     task: Optional[WorkTaskPayload]
-    trace: List[WorkflowTraceStep]
+    trace: Annotated[List[WorkflowTraceStep], operator.add]
     gen_output: Optional[GenNodeOutput]
     verify_output: Optional[VerifyNodeOutput]
     user_task_spec_path: Optional[str]
@@ -37,17 +38,6 @@ class WorkflowState(TypedDict):
     final_stage: str
     success: bool
     error: Optional[str]
-
-
-def _append_trace(
-    trace: List[WorkflowTraceStep],
-    node: str,
-    status: Literal["success", "error"],
-    detail: str,
-) -> List[WorkflowTraceStep]:
-    new_trace = list(trace)
-    new_trace.append(WorkflowTraceStep(node=node, status=status, detail=detail))
-    return new_trace
 
 
 def _route_intent(raw_input_text: str) -> IntentCategory:
@@ -114,15 +104,15 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
         shared_task_dir=str(shared_task_dir),
     )
 
-    trace = _append_trace(
-        state.get("trace", []),
-        "parser_initialize",
-        "success",
-        f"created task workspace and persisted origin input: {origin_input_path}",
-    )
     return {
         "task": task,
-        "trace": trace,
+        "trace": [
+            WorkflowTraceStep(
+                node="parser_initialize",
+                status="success",
+                detail=f"created task workspace and persisted origin input: {origin_input_path}",
+            )
+        ],
         "user_task_spec_path": str(user_task_spec_path),
         "origin_input_path": str(origin_input_path),
         "output_task_dir": str(output_task_dir),
@@ -148,8 +138,10 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
         raise ValueError("generator returned empty data")
     gen_output = GenNodeOutput.model_validate(response_payload["data"], strict=False)
 
-    trace = _append_trace(state.get("trace", []), "gen_stateless", "success", str(response_payload.get("message", "")))
-    return {"gen_output": gen_output, "trace": trace}
+    trace_step = WorkflowTraceStep(
+        node="gen_stateless", status="success", detail=str(response_payload.get("message", ""))
+    )
+    return {"gen_output": gen_output, "trace": [trace_step]}
 
 
 def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
@@ -178,8 +170,10 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
         raise ValueError("verify returned empty data")
     verify_output = VerifyNodeOutput.model_validate(response_payload["data"], strict=False)
 
-    trace = _append_trace(state.get("trace", []), "verify_stateless", "success", str(response_payload.get("message", "")))
-    return {"verify_output": verify_output, "trace": trace}
+    trace_step = WorkflowTraceStep(
+        node="verify_stateless", status="success", detail=str(response_payload.get("message", ""))
+    )
+    return {"verify_output": verify_output, "trace": [trace_step]}
 
 
 def route_after_verify(
@@ -209,8 +203,7 @@ def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
         f"prepare retry iteration={task.iteration}, verdict={verify_output.report.verdict}, "
         f"fix_hint={verify_output.report.error_details.suggested_fix}"
     )
-    trace = _append_trace(state.get("trace", []), "prepare_retry", "error", detail)
-    return {"task": task, "trace": trace}
+    return {"task": task, "trace": [WorkflowTraceStep(node="prepare_retry", status="error", detail=detail)]}
 
 
 def archive_success_node(state: WorkflowState) -> Dict[str, Any]:
@@ -228,8 +221,10 @@ def archive_success_node(state: WorkflowState) -> Dict[str, Any]:
         shutil.copytree(source, target)
         shutil.rmtree(source)
 
-    trace = _append_trace(state.get("trace", []), "archive_success", "success", f"archived artifacts to {target}")
-    return {"trace": trace, "final_stage": "archive_success", "success": True}
+    trace_step = WorkflowTraceStep(
+        node="archive_success", status="success", detail=f"archived artifacts to {target}"
+    )
+    return {"trace": [trace_step], "final_stage": "archive_success", "success": True}
 
 
 def archive_failed_node(state: WorkflowState) -> Dict[str, Any]:
@@ -247,8 +242,10 @@ def archive_failed_node(state: WorkflowState) -> Dict[str, Any]:
         shutil.copytree(source, target)
         shutil.rmtree(source)
 
-    trace = _append_trace(state.get("trace", []), "archive_failed", "error", f"archived failed artifacts to {target}")
-    return {"trace": trace, "final_stage": "archive_failed", "success": False}
+    trace_step = WorkflowTraceStep(
+        node="archive_failed", status="error", detail=f"archived failed artifacts to {target}"
+    )
+    return {"trace": [trace_step], "final_stage": "archive_failed", "success": False}
 
 
 def build_workflow_graph():
