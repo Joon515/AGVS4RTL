@@ -49,3 +49,39 @@
 - 为 Gen Agent 引入基于 LangGraph 的内部工作流（`src/generator/workflow.py`），拆分出 `init_context_node`（读取前置规约与验证报错）、`architect_node`（类图节点细化）、`coder_node`（RTL代码生成）以及 `finalize_node`（归档落盘）四个核心节点。
 - 改造 `src/generator/main.py` 的 `/v1/generate` 接口，使其将任务委派给无状态的 LangGraph 工作流实例，确保服务级别的无状态性与图级别的局部状态流转。
 - 完善 `Agent_DEF.md` 中关于 Gen Agent 的技术规范，明确其内部 I/O 网络隔离、共享工作区访问机制以及扮演“架构师+程序员”的双重身份实现多轮对话修复。
+
+# 2026-04-17
+
+- 重构 `src/common/models.py` 协议层：补全 `BaseSyncMeta`、`UserTaskSpec`、`SpecReg`、`VerifyRpt`、`WorkflowRunRequest`、`WorkTaskPayload`、`GenNodeOutput`、`VerifyTaskPayload`、`WorkflowRunResult` 等核心 Pydantic 数据模型；引入 `TaskPaths` 与 `build_task_paths()` 统一任务目录布局，增强多服务间的文件路径契约一致性。
+- 为 `models.py` 新增多组统一校验辅助函数，包括 `_validate_non_empty_str`、`_validate_non_empty_str_list`、`_validate_optional_non_empty_str`、`_validate_optional_identifier`、`_index_ports_by_name`、`_index_nodes_by_id`，收敛重复校验逻辑，提升模型可维护性。
+- 增强 `SpecReg` 结构表达能力：在已有参数、端口、时钟复位、协议编组基础上，补充 `functional_requirements`、`corner_cases`、`illegal_conditions`、`latency_notes`，并通过 `RtlNode` / `RtlEdge` / `EndpointRef` 明确 RTL 图结构语义。
+- 为 `SpecReg` 和 `VerifyRpt` 增加面向编排器的辅助方法：如 `port_map()`、`node_map()`、`top_input_ports()`、`is_flat_design()`、`is_pass()`、`is_retryable()`、`requires_arch_refactor()`、`suggested_refactor_level()` 等，使模型不仅是静态协议，也可承载部分轻量业务语义。
+- 修正 `StrictBaseModel` 的全局严格模式配置：移除 `strict=True`，保留 `extra="forbid"` 与 `validate_assignment=True`。解决 FastAPI 在跨服务 JSON 通信中无法将字符串枚举值（如 `"GEN_WITH_TEST"`）解析为 `IntentCategory` 的问题，打通 Parser → Generator 的实际接口请求链路。
+- 重构 `src/parser/workflow.py`：将工作流从原先预留 Verify 的全闭环编排，临时收缩为当前阶段的最小闭环状态机 `parser_initialize -> gen_stateless -> archive_success`，以优先验证 Parser 与 Generator 的文件协议和生成链路。
+- 在 Parser 工作流中接入 `TaskPaths` 统一目录管理逻辑，实现任务初始化时自动创建：
+  - `Output/TASK_ID/Origin`
+  - `Output/TASK_ID/Archive`
+  - `Output/TASK_ID/Result`
+  - `shared_workspace/TASK_ID/specs`
+  - `shared_workspace/TASK_ID/rtl`
+  - `shared_workspace/TASK_ID/sim`
+- 完成 Parser 冷启动节点的规范化落盘：请求进入后自动生成 `task_id`、落盘原始输入、构建并保存 `UserTaskSpec.json` 到 Output 根目录与 SharedWorkspace/specs，确保后续 Generator 仅读路径即可获取任务上下文。
+- 修复 `WorkflowRunRequest` 与 `UserTaskSpec` 在 `refined_requirements` 约束上的衔接问题：当请求仅提供 `raw_input_text` 而未显式传入 `refined_requirements` 时，由 Parser 自动构造兜底需求列表，避免初始化阶段因 `min_length=1` 约束失败。
+- 重构 `src/parser/main.py`：补充日志、统一接口注释、明确同步阻塞式工作流执行语义，并保留 `ApiResponse[WorkflowRunResult]` 作为对外统一响应结构。
+- 重构 `src/generator/workflow.py`：将 Generator 内部工作流组织为 `init_context -> architect -> coder -> finalize` 四节点 LangGraph 状态机，其中：
+  - `init_context` 负责读取 `UserTaskSpec`，并在重试轮次尝试加载上一轮 `SpecReg` 与 `VerifyRpt`
+  - `architect` 负责生成结构化 `SpecReg`
+  - `coder` 负责基于 `SpecReg` 输出 RTL 代码
+  - `finalize` 负责统一落盘 `SpecReg_iterN.json` 与 Verilog 文件，并返回 `GenNodeOutput`
+- 修复 Generator 与当前 `models.py` 的协议不一致问题：将 `RtlEdge.source/target` 从旧字符串形式改为 `EndpointRef` 结构化端点，确保 `SpecReg` 能通过当前 Pydantic 模型校验。
+- 完善 Generator 的占位实现，使其在**不接入 LLM 的情况下也可独立运行**：当前通过规则化 `SpecReg` 构造函数与简单模板式 RTL 输出函数，先行打通“结构化规约生成 + Verilog 落盘”最小链路。
+- 小修 `src/generator/main.py`：清理无用 import、补充日志与中文注释，保留 `/v1/generate` 的轻量协议接口，确保内部服务职责单一。
+- 完成 Docker 三服务最小联调验证：确认 Parser 对外宿主机暴露端口为 `8001`，Generator / Verify 保持仅容器内网络可见，符合三容器隔离拓扑设计。
+- 打通 **Parser + Generator 最小闭环**：成功通过 `/v1/workflow/run` 发起任务，请求经 Parser 初始化后转交 Generator，生成 `SpecReg_iter0.json` 与 `{top_module}.v`，再由 Parser 自动归档到 `Output/TASK_ID/Result/shared_workspace`。
+- 首次获得端到端成功响应，返回结果包含：
+  - `task_id`
+  - `final_stage=archive_success`
+  - `success=true`
+  - `trace=[parser_initialize, gen_stateless, archive_success]`
+  - `gen_output.spec_file_path`
+  - `gen_output.rtl_path`

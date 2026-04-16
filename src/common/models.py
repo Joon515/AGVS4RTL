@@ -69,7 +69,6 @@ def _index_nodes_by_id(nodes: List["RtlNode"]) -> Dict[str, "RtlNode"]:
 
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(
-        strict=True,
         extra="forbid",
         validate_assignment=True,
         use_enum_values=False,

@@ -2,10 +2,6 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import logging
 
-# 注意：
-# 请确认你项目中的真实文件名。
-# 如果实际路径是 src/common/model.py，请将下面导入改为：
-# from src.common.model import ApiResponse, GenNodeOutput, WorkTaskPayload
 from src.common.models import ApiResponse, GenNodeOutput, WorkTaskPayload
 from src.generator.workflow import run_gen_workflow
 

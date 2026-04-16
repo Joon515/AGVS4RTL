@@ -54,27 +54,18 @@ AGVS4RTL/
 
 ### 未来改进项目
 
-1. 引入 **Verify-Coding 反馈回路**。系统优先进行语义空跑（Dry-run），通过后再启动基于 Icarus Verilog 的动态仿真，大幅提升无效生成的纠错效率。
-2. Architect 不再产生模糊描述，而是输出 **Spec-Registry (规格注册表)**。通过 Pydantic 强类型约束端口定义与协议，从源头解决接口不匹配问题。
+1. 引入 **最小 Verify Stub**。当前系统已完成 Parser + Generator 的最小闭环，下一阶段最重要的是补上一个最小可运行的 Verify 模块，先完成文件存在性检查与可选的 `iverilog` 编译校验，使系统从“能生成”提升到“能做最小验证”。
+
+2. 恢复 Parser 的 **完整工作流编排**。在 Verify Stub 可用后，将当前简化状态机重新扩展为 `parser_initialize -> gen_stateless -> verify_stateless -> route -> archive`，重新接入验证后路由与后续失败处理逻辑。
+
+3. 固化 **VerifyRpt 落盘约定**。Generator 已预留重试轮次读取上一轮 `VerifyRpt` 的逻辑，但上游尚未稳定写入对应文件。下一阶段需要统一 Verify 报告的目录、命名与迭代版本规则，确保后续修复闭环可以真实落地。
 
 ---
 
 ### 最新开发进度
 
-1. 在 Parser 中完成 LangGraph 编排骨架重构，状态机主链更新为 `parser_initialize -> gen_stateless -> verify_stateless -> archive`。
-2. 新增任务冷启动逻辑：请求进入后立即创建 `Output/TASK_ID` 与 `shared_workspace/TASK_ID` 目录结构，并落盘原始输入与 `UserTaskSpec.json`。
-3. 完成轻量化模块通信改造：控制面保留 `WorkflowTraceStep`，数据面改为传递 `spec_file_path`、`rtl_path`、`sim_log_path` 等文件路径，不再在模块间传递大对象内容。
-4. 更新 `src/common/models.py` 工作流协议，补齐 `raw_input_text`、`input_filename`、`output_root`、`shared_workspace_root`、`max_iterations`、`iteration`、`spec_file_path`、`shared_task_dir` 等字段。
-5. 将 Gen 节点改为无状态落盘模式：生成 `SpecReg_iterN.json` 与 RTL 文件到共享任务目录，并仅回传路径型结果。
-6. 将 Verify 节点改为无状态校验模式：读取 `spec_file_path` 与 `rtl_path`，生成 `VerifyRpt`、仿真日志与报告文件，并将判定结果回传给 Parser。
-7. Parser 编排器已支持基于 `VerifyNodeOutput.report.verdict` 的重试/终止决策，任务结束后执行归档与共享工作区清理。
-8. 已在 Docker 环境完成语法校验与三容器联通验证，当前可返回 `final_stage=archive_success`。
-9. 重构 `SpecReg` 为类图架构（Graph Structure），引入 `RtlNode` 与 `RtlEdge`，支持基于 `NodeType` 的渐进式节点细化，约束大模型生成硬件代码时的逻辑发散。
-10. 在 Gen 模块内部引入 LangGraph 构建工作流（包含 `init_context`, `architect`, `coder`, `finalize` 节点），实现读取历史 `VerifyRpt` 后的多轮反思与增量修复。
-
----
-
-### 其余待办事项
-
-- 目前为了调试方便采用 `chmod 777`，后期需细化 `shared_workspace` 的读写控制。
-- 当前 Gen / Verify 仍为占位实现，后续需接入真实的 Semantic Router、LLM 规约抽取、RTL 生成与仿真验证流程。
+1. 已完成 `src/common/models.py` 的第一轮稳定化重构，统一了 Parser / Generator 当前阶段使用的核心协议模型，并修复了 `strict=True` 导致 FastAPI 枚举字段跨服务传输失败的问题。  
+2. 已完成 Parser 工作流的最小闭环改造，当前状态机收缩为 `parser_initialize -> gen_stateless -> archive_success`，可稳定完成任务初始化、`UserTaskSpec` 落盘、Generator 调度与结果归档。  
+3. 已完成 Generator 内部 LangGraph 骨架重构，形成 `init_context -> architect -> coder -> finalize` 四节点流程，并在**不依赖 LLM 接口**的情况下实现基于规则占位的 `SpecReg` 与 Verilog RTL 生成。  
+4. 已完成 Docker 三服务联调与宿主机入口确认：当前 Parser 对外映射端口为 `8001`，Generator / Verify 保持仅容器内可见，符合既定三容器网络隔离设计。  
+5. 已成功跑通首个 Parser + Generator 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json` 与 `{top_module}.v`。
