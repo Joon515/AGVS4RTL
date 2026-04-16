@@ -56,6 +56,11 @@ def _validate_optional_non_empty_str(value: Optional[str], field_name: str) -> O
         raise ValueError(f"{field_name} cannot be blank")
     return value
 
+def _validate_optional_identifier(value: Optional[str], field_name: str) -> Optional[str]:
+    if value is None:
+        return value
+    return _validate_identifier(value, field_name)
+
 def _index_ports_by_name(ports: List["PortDef"]) -> Dict[str, "PortDef"]:
     return {p.name: p for p in ports}
 
@@ -153,9 +158,7 @@ class BaseSyncMeta(StrictBaseModel):
     @field_validator("task_id")
     @classmethod
     def validate_task_id(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("task_id cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "task_id")
 
     @field_validator("top_module")
     @classmethod
@@ -175,9 +178,7 @@ class PathRef(StrictBaseModel):
     @field_validator("path")
     @classmethod
     def validate_path(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("path cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "path")
 
 
 class ParameterDef(StrictBaseModel):
@@ -190,7 +191,7 @@ class ParameterDef(StrictBaseModel):
     def validate_name(cls, v: str) -> str:
         _validate_identifier(v, "parameter.name")
         if v.upper() != v:
-            raise ValueError(f"parameter.name='{v}' should be uppercase by convention")
+            raise ValueError(...)
         return v
 
 
@@ -212,16 +213,12 @@ class PortDef(StrictBaseModel):
     @field_validator("clock_domain")
     @classmethod
     def validate_clock_domain(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        return _validate_identifier(v, "port.clock_domain")
+        return _validate_optional_identifier(v, "port.clock_domain")
 
     @field_validator("width")
     @classmethod
     def validate_width(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("port.width cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "port.width")
 
     @model_validator(mode="after")
     def validate_port_semantics(self) -> "PortDef":
@@ -251,10 +248,8 @@ class ProtocolGroup(StrictBaseModel):
 
     @field_validator("protocol_type", "role")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("protocol_type/role cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"protocol.{info.field_name}")
 
     @field_validator("port_mapping")
     @classmethod
@@ -283,9 +278,7 @@ class RtlNode(StrictBaseModel):
     @field_validator("module_name")
     @classmethod
     def validate_module_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        return _validate_identifier(v, "node.module_name")
+        return _validate_optional_identifier(v, "node.module_name")
 
     @model_validator(mode="after")
     def validate_node_consistency(self) -> "RtlNode":
@@ -331,9 +324,7 @@ class RtlEdge(StrictBaseModel):
     @field_validator("width")
     @classmethod
     def validate_width(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("edge.width cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "edge.width")
 
     @model_validator(mode="after")
     def validate_edge_consistency(self) -> "RtlEdge":
@@ -416,36 +407,23 @@ class UserTaskSpec(BaseSyncMeta):
         "external_target_path",
     )
     @classmethod
-    def validate_required_paths(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("required path cannot be empty")
-        return v
+    def validate_required_paths(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"UserTaskSpec.{info.field_name}")
 
     @field_validator("external_source_path")
     @classmethod
     def validate_optional_path(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        if not v.strip():
-            raise ValueError("external_source_path cannot be blank")
-        return v
+        return _validate_optional_non_empty_str(v, "UserTaskSpec.external_source_path")
 
     @field_validator("refined_requirements", "design_rules")
     @classmethod
-    def validate_text_list(cls, v: List[str]) -> List[str]:
-        for item in v:
-            if not item.strip():
-                raise ValueError("list item cannot be empty")
-        return v
+    def validate_text_list(cls, v: List[str], info) -> List[str]:
+        return _validate_non_empty_str_list(v, f"UserTaskSpec.{info.field_name}")
 
     @field_validator("target_protocol")
     @classmethod
     def validate_target_protocol(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        if not v.strip():
-            raise ValueError("target_protocol cannot be blank")
-        return v
+        return _validate_optional_non_empty_str(v, "UserTaskSpec.target_protocol")
 
 
 # ==========================================
@@ -469,9 +447,7 @@ class SpecReg(BaseSyncMeta):
     @field_validator("module_description")
     @classmethod
     def validate_module_description(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("module_description cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "SpecReg.module_description")
 
     @field_validator(
         "verification_directives",
@@ -481,16 +457,16 @@ class SpecReg(BaseSyncMeta):
         "latency_notes",
     )
     @classmethod
-    def validate_text_list(cls, v: List[str]) -> List[str]:
-        for item in v:
-            if not item.strip():
-                raise ValueError("text list item cannot be empty")
-        return v
+    def validate_text_list(cls, v: List[str], info) -> List[str]:
+        return _validate_non_empty_str_list(v, f"SpecReg.{info.field_name}")
 
     @model_validator(mode="after")
     def validate_spec_consistency(self) -> "SpecReg":
-        port_names = {p.name for p in self.ports}
-        node_ids = {n.node_id for n in self.nodes}
+        port_map = _index_ports_by_name(self.ports)
+        node_map = _index_nodes_by_id(self.nodes)
+
+        port_names = set(port_map.keys())
+        node_ids = set(node_map.keys())
 
         if len(port_names) != len(self.ports):
             raise ValueError("duplicate port names found")
@@ -502,18 +478,11 @@ class SpecReg(BaseSyncMeta):
         if len(node_ids) != len(self.nodes):
             raise ValueError("duplicate node_id found")
 
-        # 校验 clock/reset 引用
         for cr in self.clock_and_reset:
             if cr.clock_name not in port_names:
                 raise ValueError(f"clock '{cr.clock_name}' not found in ports")
             if cr.reset_name not in port_names:
                 raise ValueError(f"reset '{cr.reset_name}' not found in ports")
-
-            port_map = _index_ports_by_name(self.ports)
-            node_map = _index_nodes_by_id(self.nodes)
-
-            port_names = set(port_map.keys())
-            node_ids = set(node_map.keys())
 
             clk_port = port_map[cr.clock_name]
             rst_port = port_map[cr.reset_name]
@@ -523,14 +492,12 @@ class SpecReg(BaseSyncMeta):
             if rst_port.direction != PortDirection.INPUT:
                 raise ValueError(f"reset port '{cr.reset_name}' must be input")
 
-        # 标记型语义检查
         for p in self.ports:
             if p.is_clock and p.name not in {cr.clock_name for cr in self.clock_and_reset}:
                 raise ValueError(f"port '{p.name}' is marked as clock but not declared in clock_and_reset")
             if p.is_reset and p.name not in {cr.reset_name for cr in self.clock_and_reset}:
                 raise ValueError(f"port '{p.name}' is marked as reset but not declared in clock_and_reset")
 
-        # protocol 引用校验
         for proto in self.protocols:
             for logical_sig, physical_port in proto.port_mapping.items():
                 if physical_port not in port_names:
@@ -538,7 +505,6 @@ class SpecReg(BaseSyncMeta):
                         f"protocol '{proto.protocol_type}' mapping '{logical_sig} -> {physical_port}' references unknown port"
                     )
 
-        # edge 引用校验
         for edge in self.edges:
             if edge.source.node_id != "TOP" and edge.source.node_id not in node_ids:
                 raise ValueError(f"edge source node '{edge.source.node_id}' not found")
@@ -603,9 +569,7 @@ class PortMismatch(StrictBaseModel):
     @field_validator("actual_port")
     @classmethod
     def validate_actual_port(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        return _validate_identifier(v, "actual_port")
+        return _validate_optional_identifier(v, "actual_port")
 
 
 class CompileError(StrictBaseModel):
@@ -617,9 +581,7 @@ class CompileError(StrictBaseModel):
     @field_validator("message")
     @classmethod
     def validate_message(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("compile error message cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "CompileError.message")
 
 
 class AssertionFailure(StrictBaseModel):
@@ -630,9 +592,7 @@ class AssertionFailure(StrictBaseModel):
     @field_validator("message")
     @classmethod
     def validate_message(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("assertion failure message cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "AssertionFailure.message")
 
 
 class ErrorSnapshot(StrictBaseModel):
@@ -645,19 +605,12 @@ class ErrorSnapshot(StrictBaseModel):
     @field_validator("infra_errors")
     @classmethod
     def validate_infra_errors(cls, v: List[str]) -> List[str]:
-        for item in v:
-            if not item.strip():
-                raise ValueError("infra_errors item cannot be empty")
-        return v
+        return _validate_non_empty_str_list(v, "ErrorSnapshot.infra_errors")
 
     @field_validator("suggested_fix")
     @classmethod
     def validate_suggested_fix(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        if not v.strip():
-            raise ValueError("suggested_fix cannot be blank")
-        return v
+        return _validate_optional_non_empty_str(v, "ErrorSnapshot.suggested_fix")
 
 
 class VerifyRpt(BaseSyncMeta):
@@ -670,12 +623,8 @@ class VerifyRpt(BaseSyncMeta):
 
     @field_validator("sim_log_path", "wave_file_path")
     @classmethod
-    def validate_optional_paths(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        if not v.strip():
-            raise ValueError("path cannot be blank")
-        return v
+    def validate_optional_paths(cls, v: Optional[str], info) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, f"VerifyRpt.{info.field_name}")
 
     @model_validator(mode="after")
     def validate_verdict_consistency(self) -> "VerifyRpt":
@@ -754,9 +703,7 @@ class ApiResponse(StrictBaseModel, Generic[T]):
     @field_validator("message")
     @classmethod
     def validate_message(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("message cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "ApiResponse.message")
 
 
 # ==========================================
@@ -781,17 +728,12 @@ class WorkflowRunRequest(StrictBaseModel):
     @field_validator("refined_requirements")
     @classmethod
     def validate_refined_requirements(cls, v: List[str]) -> List[str]:
-        for item in v:
-            if not item.strip():
-                raise ValueError("refined_requirements item cannot be empty")
-        return v
+        return _validate_non_empty_str_list(v, "WorkflowRunRequest.refined_requirements")
 
-    @field_validator("raw_input_text", "input_filename", "output_root", "shared_workspace_root")
+    @field_validator("input_filename", "output_root", "shared_workspace_root")
     @classmethod
     def validate_non_empty_text(cls, v: str, info) -> str:
-        if info.field_name in {"input_filename", "output_root", "shared_workspace_root"} and not v.strip():
-            raise ValueError(f"{info.field_name} cannot be empty")
-        return v
+        return _validate_non_empty_str(v, f"WorkflowRunRequest.{info.field_name}")
 
     @model_validator(mode="after")
     def validate_input_source(self) -> "WorkflowRunRequest":
@@ -810,10 +752,8 @@ class WorkTaskPayload(StrictBaseModel):
 
     @field_validator("task_id", "spec_file_path", "shared_task_dir")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("field cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"WorkTaskPayload.{info.field_name}")
 
     @field_validator("top_module")
     @classmethod
@@ -831,10 +771,8 @@ class GenNodeOutput(StrictBaseModel):
 
     @field_validator("spec_file_path", "rtl_path", "summary")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("field cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"GenNodeOutput.{info.field_name}")
 
 
 class VerifyTaskPayload(StrictBaseModel):
@@ -844,10 +782,8 @@ class VerifyTaskPayload(StrictBaseModel):
 
     @field_validator("spec_file_path", "rtl_path")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("field cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"VerifyTaskPayload.{info.field_name}")
 
 
 class VerifyNodeOutput(StrictBaseModel):
@@ -857,9 +793,7 @@ class VerifyNodeOutput(StrictBaseModel):
     @field_validator("summary")
     @classmethod
     def validate_summary(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("summary cannot be empty")
-        return v
+        return _validate_non_empty_str(v, "VerifyNodeOutput.summary")
 
 
 class WorkflowTraceStep(StrictBaseModel):
@@ -871,10 +805,8 @@ class WorkflowTraceStep(StrictBaseModel):
 
     @field_validator("node", "detail")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("field cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"WorkflowTraceStep.{info.field_name}")
 
 
 class WorkflowRunResult(StrictBaseModel):
@@ -887,7 +819,5 @@ class WorkflowRunResult(StrictBaseModel):
 
     @field_validator("task_id", "final_stage")
     @classmethod
-    def validate_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("field cannot be empty")
-        return v
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"WorkflowRunResult.{info.field_name}")
