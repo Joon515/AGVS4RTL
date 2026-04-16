@@ -12,43 +12,52 @@ from langgraph.graph import END, START, StateGraph
 from src.common.models import (
     GenNodeOutput,
     IntentCategory,
+    TaskPaths,
     UserTaskSpec,
     VerifyNodeOutput,
     VerifyTaskPayload,
-    VerifyVerdict,
     WorkTaskPayload,
     WorkflowRunRequest,
     WorkflowRunResult,
     WorkflowTraceStep,
+    build_task_paths,
     generate_global_task_id,
 )
 
 
 class WorkflowState(TypedDict):
-    """LangGraph 全局状态字典，用于在节点间传递上下文"""
+    """LangGraph 全局状态字典，用于在各节点之间传递上下文。"""
+
     request: WorkflowRunRequest
-    task: Optional[WorkTaskPayload]  # 当前流转的任务载荷
+    task: Optional[WorkTaskPayload]  # 当前流转中的轻量任务载荷
     trace: Annotated[List[WorkflowTraceStep], operator.add]  # 节点执行轨迹，支持追加
-    gen_output: Optional[GenNodeOutput]  # Gen 节点的输出结果
-    verify_output: Optional[VerifyNodeOutput]  # Verify 节点的输出结果
-    user_task_spec_path: Optional[str]  # 结构化规约落盘路径
-    origin_input_path: Optional[str]  # 原始需求落盘路径
-    output_task_dir: Optional[str]  # 宿主机或输出挂载的专属任务目录
-    shared_task_dir: Optional[str]  # 共享工作区 (Sandbox) 目录
-    max_iterations: int  # 最大允许的重试/迭代轮次
-    final_stage: str  # 最终停留在的阶段节点
-    success: bool  # 工作流最终成功与否标志
-    error: Optional[str]  # 全局错误信息
+    gen_output: Optional[GenNodeOutput]  # Generator 节点输出
+    verify_output: Optional[VerifyNodeOutput]  # Verify 节点输出
+
+    task_paths: Optional[TaskPaths]  # 统一任务目录布局对象
+    user_task_spec_path: Optional[str]  # Output 目录中的 UserTaskSpec 路径（便于结果查看）
+    origin_input_path: Optional[str]  # 原始输入落盘路径（便于追踪与审计）
+
+    max_iterations: int  # 最大允许迭代轮次
+    final_stage: str  # 工作流最终停留节点
+    success: bool  # 工作流是否成功
+    error: Optional[str]  # 预留的全局错误信息
 
 
 def _route_intent(raw_input_text: str) -> IntentCategory:
     """
-    语义路由 (Semantic Router) 的降级/简单实现。
-    此处根据自然语言的关键词进行粗略的意图分类。
-    后续可拓展为接入 LLM 进行精准判断。
+    语义路由（当前为降级实现）。
+
+    这里使用关键词进行粗分类：
+    - 包含“fix/修复” -> FIX_BUG
+    - 包含“verify/验证” -> VERIFY_ONLY
+    - 包含“modify/修改” -> MODIFY_EXISTING
+    - 默认 -> GEN_WITH_TEST
+
+    后续如果接入 LLM / Semantic Router，可直接替换本函数实现。
     """
     normalized = raw_input_text.lower()
-    # Agent_DEF.md: "例如，用户提到“修复”，路由至 FIX_BUG；提到“新模块”，路由至 GEN_WITH_TEST。"
+
     if "fix" in normalized or "修复" in normalized:
         return IntentCategory.FIX_BUG
     if "verify" in normalized or "验证" in normalized:
@@ -58,93 +67,152 @@ def _route_intent(raw_input_text: str) -> IntentCategory:
     return IntentCategory.GEN_WITH_TEST
 
 
+def _build_refined_requirements(request: WorkflowRunRequest) -> List[str]:
+    """
+    为 UserTaskSpec 生成可落盘的 refined_requirements。
+
+    说明：
+    - 当前 UserTaskSpec 要求 refined_requirements 至少包含一项。
+    - 但 WorkflowRunRequest 允许 refined_requirements 为空，只要 raw_input_text 非空即可。
+    - 因此这里提供统一兜底逻辑，避免初始化节点因字段约束失败。
+
+    规则：
+    1. 若请求中已提供 refined_requirements，则直接使用。
+    2. 否则使用 raw_input_text 去除首尾空白后的结果作为单条需求。
+    """
+    if request.refined_requirements:
+        return request.refined_requirements
+
+    fallback = request.raw_input_text.strip()
+    if fallback:
+        return [fallback]
+
+    # 理论上不会走到这里，因为 WorkflowRunRequest 已经保证二者至少有一个非空。
+    raise ValueError("cannot build refined_requirements from empty request")
+
+
+def _ensure_task_directories(task_paths: TaskPaths) -> None:
+    """
+    创建本任务运行所需的全部目录。
+
+    目录包括：
+    - Output/TASK_ID/Origin
+    - Output/TASK_ID/Archive
+    - Output/TASK_ID/Result
+    - SharedWorkspace/TASK_ID/specs
+    - SharedWorkspace/TASK_ID/rtl
+    - SharedWorkspace/TASK_ID/sim
+    """
+    for path_str in [
+        task_paths.origin_dir,
+        task_paths.archive_dir,
+        task_paths.result_dir,
+        task_paths.specs_dir,
+        task_paths.rtl_dir,
+        task_paths.sim_dir,
+    ]:
+        Path(path_str).mkdir(parents=True, exist_ok=True)
+
+
 def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
     """
-    节点 1：工作流冷启动。
-    职责：分配 UUID，创建隔离的目录规范，将非结构化输入转化为 UserTaskSpec 并落盘。
+    节点 1：Parser 冷启动初始化节点。
+
+    职责：
+    1. 生成全局唯一 task_id。
+    2. 依据统一目录规范构建 Output 与 SharedWorkspace 路径。
+    3. 创建任务目录。
+    4. 将用户原始输入落盘到 Origin。
+    5. 进行意图路由，构建 UserTaskSpec。
+    6. 将 UserTaskSpec 同时落盘到 Output 与 SharedWorkspace/specs。
+    7. 生成轻量任务载荷 WorkTaskPayload，供 Generator/Verify 调度使用。
     """
     request = state["request"]
     task_id = generate_global_task_id()
 
-    # 1. 按照 Agent_DEF.md 规范构建 /Output 下的物理目录结构
-    output_task_dir = Path(request.output_root) / task_id
-    origin_dir = output_task_dir / "Origin"
-    archive_dir = output_task_dir / "Archive"
-    result_dir = output_task_dir / "Result"
-    
-    # 2. 构建共享工作区 (Sandbox) 目录，用于模块间环境隔离
-    shared_task_dir = Path(request.shared_workspace_root) / task_id
-    shared_specs_dir = shared_task_dir / "specs"
-    shared_rtl_dir = shared_task_dir / "rtl"
-    shared_sim_dir = shared_task_dir / "sim"
+    # 基于统一路径工厂函数创建任务目录布局，避免散落的字符串拼接逻辑。
+    task_paths = build_task_paths(
+        task_id=task_id,
+        output_root=request.output_root,
+        shared_workspace_root=request.shared_workspace_root,
+    )
 
-    for path in [origin_dir, archive_dir, result_dir, shared_specs_dir, shared_rtl_dir, shared_sim_dir]:
-        path.mkdir(parents=True, exist_ok=True)
+    # 确保所有目录存在。
+    _ensure_task_directories(task_paths)
 
-    # 3. 保存原始需求至 /Origin (非结构化文本落盘)
-    origin_input_path = origin_dir / request.input_filename
+    # 原始输入首先落盘到 Output/TASK_ID/Origin，作为任务原始审计记录。
+    origin_input_path = Path(task_paths.origin_dir) / request.input_filename
     origin_input_path.write_text(request.raw_input_text or "", encoding="utf-8")
 
-    # 4. 语义路由，实例化 UserTaskSpec (结构化规约)
+    # 进行意图路由；如果调用者显式指定 intent，则优先使用显式值。
     resolved_intent = request.intent if request.intent is not None else _route_intent(request.raw_input_text)
+
+    # 生成满足 UserTaskSpec 约束的 refined_requirements。
+    refined_requirements = _build_refined_requirements(request)
+
+    # 结构化规约对象：这是 Parser 阶段的核心产物。
     user_task_spec = UserTaskSpec(
         task_id=task_id,
         iteration=0,
         intent=resolved_intent,
         top_module=request.top_module,
         prompt_workspace_path=str(origin_input_path),
-        refined_requirements=request.refined_requirements,
-        workspace_dir=str(shared_task_dir),
-        external_target_path=str(result_dir),
+        refined_requirements=refined_requirements,
+        workspace_dir=task_paths.shared_task_dir,
+        external_target_path=task_paths.result_dir,
         design_rules=[],
     )
 
-    # 将规约备份到 Output 任务根目录
-    user_task_spec_path = output_task_dir / "UserTaskSpec.json"
-    user_task_spec_path.write_text(
+    # 1) 将 UserTaskSpec 保存到 Output/TASK_ID/UserTaskSpec.json，方便归档与人工查看。
+    output_user_task_spec_path = Path(task_paths.user_task_spec_path)
+    output_user_task_spec_path.write_text(
         user_task_spec.model_dump_json(indent=2),
         encoding="utf-8",
     )
 
-    # 将规约落盘至共享工作区 (轻量化数据平面通信基础)
-    shared_user_task_spec_path = shared_specs_dir / "UserTaskSpec.json"
+    # 2) 将同一份规约同步到 SharedWorkspace/specs，供 Generator 读取。
+    shared_user_task_spec_path = Path(task_paths.specs_dir) / "UserTaskSpec.json"
     shared_user_task_spec_path.write_text(
         user_task_spec.model_dump_json(indent=2),
         encoding="utf-8",
     )
 
-    # 5. 实例化任务总线载荷 WorkTaskPayload
+    # 生成轻量调度载荷：控制面只传路径与任务元信息，不直接传递大文本。
     task = WorkTaskPayload(
         task_id=task_id,
         iteration=0,
         intent=resolved_intent,
         top_module=request.top_module,
         spec_file_path=str(shared_user_task_spec_path),
-        shared_task_dir=str(shared_task_dir),
+        shared_task_dir=task_paths.shared_task_dir,
     )
 
     return {
         "task": task,
+        "task_paths": task_paths,
+        "user_task_spec_path": str(output_user_task_spec_path),
+        "origin_input_path": str(origin_input_path),
+        "max_iterations": request.max_iterations,
         "trace": [
             WorkflowTraceStep(
                 node="parser_initialize",
                 status="success",
-                detail=f"created task workspace and persisted origin input: {origin_input_path}",
+                detail=f"initialized task workspace and persisted origin input to {origin_input_path}",
+                iteration=0,
             )
         ],
-        "user_task_spec_path": str(user_task_spec_path),
-        "origin_input_path": str(origin_input_path),
-        "output_task_dir": str(output_task_dir),
-        "shared_task_dir": str(shared_task_dir),
-        "max_iterations": request.max_iterations,
     }
 
 
 def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     """
-    节点 2：Gen 模块无状态调用。
-    职责：通过 HTTP 请求触发 Generator 服务，仅在控制面传递任务元数据，
-    不传递大段 RTL 代码。
+    节点 2：无状态调用 Generator 服务。
+
+    职责：
+    1. 从状态中读取 WorkTaskPayload。
+    2. 通过 HTTP 调用内部 Generator 服务。
+    3. 接收生成结果（SpecReg 路径 + RTL 路径）。
+    4. 将结果写回工作流状态。
     """
     task = state.get("task")
     if task is None:
@@ -153,7 +221,7 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     gen_base_url = os.getenv("GEN_SERVICE_URL", "http://gen:8000")
     endpoint = f"{gen_base_url}/v1/generate"
 
-    # 外部网络调用，发起无状态生成请求
+    # 注意：这里只通过控制面传递轻量载荷，不直接传输大段 RTL 文本。
     with httpx.Client(timeout=15.0) as client:
         response = client.post(endpoint, json=task.model_dump(mode="json"))
         response.raise_for_status()
@@ -161,22 +229,36 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     response_payload = response.json()
     if response_payload.get("status") != "success" or response_payload.get("data") is None:
         raise ValueError("generator returned empty data")
-    gen_output = GenNodeOutput.model_validate(response_payload["data"], strict=False)
 
-    trace_step = WorkflowTraceStep(
-        node="gen_stateless", status="success", detail=str(response_payload.get("message", ""))
-    )
-    return {"gen_output": gen_output, "trace": [trace_step]}
+    # 使用当前冻结版模型做协议校验；这里不再放宽 strict。
+    gen_output = GenNodeOutput.model_validate(response_payload["data"])
+
+    return {
+        "gen_output": gen_output,
+        "trace": [
+            WorkflowTraceStep(
+                node="gen_stateless",
+                status="success",
+                detail=str(response_payload.get("message", "generator completed")),
+                iteration=task.iteration,
+            )
+        ],
+    }
 
 
 def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     """
-    节点 3：Verify 模块无状态调用。
-    职责：将 Gen 生成的路径 (spec 和 rtl) 转交给验证模块。
-    此时 Parser 充当编排器收集验证节点的 Verdict。
+    节点 3：无状态调用 Verify 服务。
+
+    职责：
+    1. 读取当前任务载荷与 Generator 输出。
+    2. 构造 VerifyTaskPayload（传路径，不传大文件内容）。
+    3. 通过 HTTP 调用内部 Verify 服务。
+    4. 将 VerifyNodeOutput 写回工作流状态。
     """
     task = state.get("task")
     gen_output = state.get("gen_output")
+
     if task is None:
         raise ValueError("task payload is missing")
     if gen_output is None:
@@ -185,7 +267,6 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     verify_base_url = os.getenv("VERIFY_SERVICE_URL", "http://verify:8000")
     endpoint = f"{verify_base_url}/v1/verify"
 
-    # 构建交接给验证模块的载荷 (数据面传递路径而非字符串)
     verify_payload = VerifyTaskPayload(
         task=task,
         spec_file_path=gen_output.spec_file_path,
@@ -199,112 +280,190 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     response_payload = response.json()
     if response_payload.get("status") != "success" or response_payload.get("data") is None:
         raise ValueError("verify returned empty data")
-    verify_output = VerifyNodeOutput.model_validate(response_payload["data"], strict=False)
 
-    trace_step = WorkflowTraceStep(
-        node="verify_stateless", status="success", detail=str(response_payload.get("message", ""))
-    )
-    return {"verify_output": verify_output, "trace": [trace_step]}
+    verify_output = VerifyNodeOutput.model_validate(response_payload["data"])
+
+    return {
+        "verify_output": verify_output,
+        "trace": [
+            WorkflowTraceStep(
+                node="verify_stateless",
+                status="success",
+                detail=str(response_payload.get("message", "verify completed")),
+                iteration=task.iteration,
+            )
+        ],
+    }
 
 
 def route_after_verify(
     state: WorkflowState,
 ) -> Literal["archive_success", "retry_generation", "archive_failed"]:
     """
-    条件路由边 (Conditional Edge)。
-    根据 VerifyNodeOutput.report.verdict，决定是推进迭代重试还是终止并归档。
+    验证后的条件路由。
+
+    路由规则：
+    1. 若验证通过，则进入成功归档。
+    2. 若验证失败但属于可重试类型，且未超过最大轮次，则进入重试准备节点。
+    3. 其他情况进入失败归档。
+
+    这里直接调用 VerifyRpt 的辅助方法，而不是在工作流里手写 verdict 分支，
+    让“验证结果语义”更多地由模型自身承载。
     """
     task = state.get("task")
     verify_output = state.get("verify_output")
+
     if task is None or verify_output is None:
         return "archive_failed"
 
-    # 如果通过，直接走向成功归档
-    if verify_output.report.verdict == VerifyVerdict.PASS:
+    report = verify_output.report
+
+    if report.is_pass():
         return "archive_success"
 
-    # 如果失败，且当前重试次数未达上限，则循环重试
-    if task.iteration + 1 < state.get("max_iterations", 1):
+    if report.is_retryable() and (task.iteration + 1 < state.get("max_iterations", 1)):
         return "retry_generation"
-        
-    # 超过最大轮次依然失败，走向失败归档
+
     return "archive_failed"
 
 
 def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
     """
-    节点 4：准备重试上下文。
-    职责：递增 iteration，收集错误详情作为下一轮 Gen 的输入提示。
+    节点 4：准备下一轮重试。
+
+    职责：
+    1. 在原任务载荷上递增 iteration。
+    2. 记录本轮失败的验证结论与修复建议。
+    3. 为下一次 Generator 调用保留最小必要上下文。
+
+    注意：
+    - 当前冻结版 WorkTaskPayload 仍是轻量协议，不显式携带 VerifyRpt 路径。
+    - 因此这里主要通过 iteration 与共享工作区约定来驱动下一轮生成。
     """
     task = state.get("task")
     verify_output = state.get("verify_output")
+
     if task is None or verify_output is None:
         raise ValueError("cannot prepare retry without task and verify output")
 
-    task.iteration += 1
+    report = verify_output.report
+    next_iteration = task.iteration + 1
+    task.iteration = next_iteration
+
     detail = (
-        f"prepare retry iteration={task.iteration}, verdict={verify_output.report.verdict}, "
-        f"fix_hint={verify_output.report.error_details.suggested_fix}"
+        f"prepare retry iteration={next_iteration}, "
+        f"verdict={report.verdict}, "
+        f"refactor_hint={report.suggested_refactor_level()}, "
+        f"fix_hint={report.error_details.suggested_fix}"
     )
-    return {"task": task, "trace": [WorkflowTraceStep(node="prepare_retry", status="error", detail=detail)]}
+
+    return {
+        "task": task,
+        "trace": [
+            WorkflowTraceStep(
+                node="prepare_retry",
+                status="error",
+                detail=detail,
+                iteration=next_iteration,
+            )
+        ],
+    }
 
 
 def archive_success_node(state: WorkflowState) -> Dict[str, Any]:
     """
     节点 5：成功归档节点。
-    职责：将 /SharedWorkspace 中的所有中间产物搬运到 /Output/TASK_ID/Result 下，
-    并回收 (rm -rf) 共享工作区空间。
-    """
-    output_task_dir = state.get("output_task_dir")
-    shared_task_dir = state.get("shared_task_dir")
-    if output_task_dir is None or shared_task_dir is None:
-        raise ValueError("archive path missing")
 
-    result_dir = Path(output_task_dir) / "Result"
-    source = Path(shared_task_dir)
-    target = result_dir / "shared_workspace"
+    职责：
+    1. 将 SharedWorkspace/TASK_ID 下的全部中间产物复制到 Output/TASK_ID/Result/shared_workspace。
+    2. 完成复制后删除 SharedWorkspace/TASK_ID，实现空间回收。
+    3. 记录成功归档轨迹。
+    """
+    task_paths = state.get("task_paths")
+    if task_paths is None:
+        raise ValueError("task paths missing")
+
+    source = Path(task_paths.shared_task_dir)
+    target = Path(task_paths.result_dir) / "shared_workspace"
+
     if target.exists():
         shutil.rmtree(target)
-    # Agent_DEF.md 要求：空间回收与搬运
+
     if source.exists():
         shutil.copytree(source, target)
         shutil.rmtree(source)
 
-    trace_step = WorkflowTraceStep(
-        node="archive_success", status="success", detail=f"archived artifacts to {target}"
-    )
-    return {"trace": [trace_step], "final_stage": "archive_success", "success": True}
+    task = state.get("task")
+    current_iteration = task.iteration if task is not None else 0
+
+    return {
+        "trace": [
+            WorkflowTraceStep(
+                node="archive_success",
+                status="success",
+                detail=f"archived artifacts to {target}",
+                iteration=current_iteration,
+            )
+        ],
+        "final_stage": "archive_success",
+        "success": True,
+    }
 
 
 def archive_failed_node(state: WorkflowState) -> Dict[str, Any]:
     """
     节点 6：失败归档节点。
-    职责：当达到最大重试次数依旧失败时，将现场保留至 /Output/TASK_ID/Archive，
-    并清理工作区。
-    """
-    output_task_dir = state.get("output_task_dir")
-    shared_task_dir = state.get("shared_task_dir")
-    if output_task_dir is None or shared_task_dir is None:
-        raise ValueError("archive path missing")
 
-    archive_dir = Path(output_task_dir) / "Archive"
-    source = Path(shared_task_dir)
-    target = archive_dir / "shared_workspace"
+    职责：
+    1. 当达到最大重试次数后仍未通过验证，将现场复制到 Output/TASK_ID/Archive/shared_workspace。
+    2. 保留失败现场用于后续问题排查。
+    3. 复制完成后清理 SharedWorkspace/TASK_ID。
+    """
+    task_paths = state.get("task_paths")
+    if task_paths is None:
+        raise ValueError("task paths missing")
+
+    source = Path(task_paths.shared_task_dir)
+    target = Path(task_paths.archive_dir) / "shared_workspace"
+
     if target.exists():
         shutil.rmtree(target)
+
     if source.exists():
         shutil.copytree(source, target)
         shutil.rmtree(source)
 
-    trace_step = WorkflowTraceStep(
-        node="archive_failed", status="error", detail=f"archived failed artifacts to {target}"
-    )
-    return {"trace": [trace_step], "final_stage": "archive_failed", "success": False}
+    task = state.get("task")
+    current_iteration = task.iteration if task is not None else 0
+
+    return {
+        "trace": [
+            WorkflowTraceStep(
+                node="archive_failed",
+                status="error",
+                detail=f"archived failed artifacts to {target}",
+                iteration=current_iteration,
+            )
+        ],
+        "final_stage": "archive_failed",
+        "success": False,
+    }
 
 
 def build_workflow_graph():
     """
-    编排装配：使用 LangGraph 将所有无状态 HTTP 调度节点和持久化节点拼装为有限状态机。
+    构建 LangGraph 状态机。
+
+    工作流主路径：
+    START
+      -> parser_initialize
+      -> gen_stateless
+      -> verify_stateless
+      -> (条件路由)
+         - archive_success
+         - prepare_retry -> gen_stateless
+         - archive_failed
+      -> END
     """
     graph = StateGraph(WorkflowState)
 
@@ -335,17 +494,26 @@ def build_workflow_graph():
 
 
 def run_workflow(request: WorkflowRunRequest) -> WorkflowRunResult:
+    """
+    工作流统一执行入口。
+
+    步骤：
+    1. 构建 LangGraph 工作流图。
+    2. 准备初始状态。
+    3. 执行状态机。
+    4. 将最终状态收敛为 WorkflowRunResult 返回给 FastAPI 层。
+    """
     app = build_workflow_graph()
+
     initial_state: WorkflowState = {
         "request": request,
         "task": None,
         "trace": [],
         "gen_output": None,
         "verify_output": None,
+        "task_paths": None,
         "user_task_spec_path": None,
         "origin_input_path": None,
-        "output_task_dir": None,
-        "shared_task_dir": None,
         "max_iterations": request.max_iterations,
         "final_stage": "unknown",
         "success": False,
