@@ -1,5 +1,5 @@
 services:
-  # Parser Agent: LangGraph 中枢与意图解析 (端口 8001)
+  # Parser Agent: LangGraph 中枢与意图解析（对外唯一入口，宿主机端口 8001）
   parser:
     build:
       context: .
@@ -9,14 +9,20 @@ services:
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
+      - GEN_SERVICE_URL=http://gen:8000
+      - VERIFY_SERVICE_URL=http://verify:8000
     ports:
       - "8001:8000"
     command: python -m uvicorn src.parser.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
+      - ./Output:/app/Output:rw
+    depends_on:
+      - gen
+      - verify
 
-  # Gen Agent: Architect + Coding 接口服务 (端口 8002)
+  # Gen Agent: Architect + Coding 内部服务（仅容器内可见）
   gen:
     build:
       context: .
@@ -32,8 +38,9 @@ services:
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
+      - ./Output:/app/Output:rw
 
-  # Verify Agent: 自动化验证接口服务 (端口 8003)
+  # Verify Agent: 自动化验证内部服务（仅容器内可见）
   verify:
     build:
       context: .
@@ -43,13 +50,11 @@ services:
     user: "${USER_ID}:${GROUP_ID}"
     environment:
       - PYTHONPATH=/app
+      - VERIFY_ENABLE_IVERILOG=true
     expose:
       - "8000"
     command: python -m uvicorn src.verify.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
-
-# 统一挂载卷，确保各容器间数据同步
-volumes:
-  shared_workspace:
+      - ./Output:/app/Output:rw

@@ -50,7 +50,7 @@
 - 改造 `src/generator/main.py` 的 `/v1/generate` 接口，使其将任务委派给无状态的 LangGraph 工作流实例，确保服务级别的无状态性与图级别的局部状态流转。
 - 完善 `Agent_DEF.md` 中关于 Gen Agent 的技术规范，明确其内部 I/O 网络隔离、共享工作区访问机制以及扮演“架构师+程序员”的双重身份实现多轮对话修复。
 
-# 2026-04-17
+# 2026-04-17 v1
 
 - 重构 `src/common/models.py` 协议层：补全 `BaseSyncMeta`、`UserTaskSpec`、`SpecReg`、`VerifyRpt`、`WorkflowRunRequest`、`WorkTaskPayload`、`GenNodeOutput`、`VerifyTaskPayload`、`WorkflowRunResult` 等核心 Pydantic 数据模型；引入 `TaskPaths` 与 `build_task_paths()` 统一任务目录布局，增强多服务间的文件路径契约一致性。
 - 为 `models.py` 新增多组统一校验辅助函数，包括 `_validate_non_empty_str`、`_validate_non_empty_str_list`、`_validate_optional_non_empty_str`、`_validate_optional_identifier`、`_index_ports_by_name`、`_index_nodes_by_id`，收敛重复校验逻辑，提升模型可维护性。
@@ -85,3 +85,20 @@
   - `trace=[parser_initialize, gen_stateless, archive_success]`
   - `gen_output.spec_file_path`
   - `gen_output.rtl_path`
+
+---
+
+# 2026-04-17 v2
+
+- 完成 `src/verify/workflow.py` 的 V1 骨架实现，整体风格对齐 `src/generator/workflow.py`，采用 LangGraph 内部状态机组织最小验证流程，当前节点路径为 `init_context -> semantic_check -> compile_check -> finalize`。
+- 完成 `src/verify/main.py` 的内部服务化封装，新增 `/v1/verify` 与 `/health` 接口，统一使用 `ApiResponse[VerifyNodeOutput]` 作为返回协议，保持与 Parser / Generator 服务层实现风格一致。
+- 落地 Verify Stub V1 的最小验证能力：支持 `SpecReg` 文件存在性检查、RTL 文件存在性检查、`SpecReg` 反序列化校验、顶层 module / ports 的最小静态契约检查，以及可选的 `iverilog` 编译检查。
+- 固化 Verify 侧输出约定：验证报告落盘到 `shared_workspace/TASK_ID/sim/VerifyRpt_iter{iteration}.json`，编译日志落盘到 `shared_workspace/TASK_ID/sim/compile_iter{iteration}.log`，与 Generator 侧 `SpecReg_iter{iteration}.json` 形成版本对应关系。
+- 恢复 Parser 完整工作流编排，当前对外主路径已由最小生成闭环重新扩展为 `parser_initialize -> gen_stateless -> verify_stateless -> route -> archive`，并重新接通验证后路由与成功/失败归档逻辑。
+- 完成 Parser / Generator / Verify 三服务联调，确认 `parser` 可通过容器内网络访问 `http://gen:8000` 与 `http://verify:8000`，内部健康检查与服务调度链路均已打通。
+- 修正 `docker-compose.yml` 中的运行时挂载配置，统一为三服务补齐 `./Output:/app/Output` 与 `./shared_workspace:/app/shared_workspace`，解决此前归档结果仅存在容器内文件系统、宿主机不可见的问题。
+- 修正 Compose 侧 `Output` 挂载路径大小写不一致问题，统一使用 `/app/Output`，与 `WorkflowRunRequest.output_root` 默认值及 Parser 归档逻辑保持一致，避免 Linux 容器内因路径大小写敏感导致的结果目录漂移。
+- 完成最小闭环验收：通过 Parser 外部入口 `POST /v1/workflow/run` 成功跑通 `UserTaskSpec -> SpecReg -> RTL -> VerifyRpt -> Archive` 全链路，返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下确认产物完整落盘。
+- 当前系统阶段性状态更新为：`Parser + Generator + Verify Stub V1` 最小生成-验证-归档闭环已可运行，下一阶段将优先补充失败注入测试与 retry 路径验收，再逐步增强 Verify 的静态契约检查粒度与多轮修复闭环能力。
+
+---

@@ -54,18 +54,30 @@ AGVS4RTL/
 
 ### 未来改进项目
 
-1. 引入 **最小 Verify Stub**。当前系统已完成 Parser + Generator 的最小闭环，下一阶段最重要的是补上一个最小可运行的 Verify 模块，先完成文件存在性检查与可选的 `iverilog` 编译校验，使系统从“能生成”提升到“能做最小验证”。
+1. 引入 **失败注入测试与重试闭环验收**。当前系统已完成 `Parser + Generator + Verify Stub V1` 的最小生成-验证-归档闭环，下一阶段最重要的是补充 `FAIL_COMPILE`、`INFRA_ERROR` 等失败场景测试，并验证 `parser_initialize -> gen_stateless -> verify_stateless -> route -> prepare_retry -> gen_stateless` 的重试路径是否可稳定运行，使系统从“能验证”提升到“能闭环修复”。
 
-2. 恢复 Parser 的 **完整工作流编排**。在 Verify Stub 可用后，将当前简化状态机重新扩展为 `parser_initialize -> gen_stateless -> verify_stateless -> route -> archive`，重新接入验证后路由与后续失败处理逻辑。
+2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、最小顶层 module / ports 静态核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强方向、位宽、时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
 
-3. 固化 **VerifyRpt 落盘约定**。Generator 已预留重试轮次读取上一轮 `VerifyRpt` 的逻辑，但上游尚未稳定写入对应文件。下一阶段需要统一 Verify 报告的目录、命名与迭代版本规则，确保后续修复闭环可以真实落地。
+3. 扩展 Verify 的 **动态仿真能力**。在 V1 Stub 稳定后，后续将逐步引入基于 `functional_requirements`、`corner_cases`、`illegal_conditions` 和 `verification_directives` 的测试激励生成能力，接入 `cocotb + iverilog` 形成从静态核查到动态行为验证的完整闭环。
+
+4. 强化 Generator 的 **多轮修复利用能力**。虽然 Generator 已支持在 `iteration > 0` 时尝试读取上一轮 `VerifyRpt` 与 `SpecReg`，但当前修复逻辑仍以规则占位为主。下一阶段需要让 Architect / Coder 节点更真实地消费 `VerifyRpt.error_details` 与 `suggested_fix`，形成面向失败类型的差异化修复策略。
+
+5. 补充 **工作流异常治理与可观测性**。当前工作流已经具备基础 `trace` 记录与归档机制，后续可继续增加更细粒度的错误分类、节点级耗时统计、任务级日志关联、失败现场保留策略与验收脚本，提升联调效率与问题定位能力。
 
 ---
 
 ### 最新开发进度
 
-1. 已完成 `src/common/models.py` 的第一轮稳定化重构，统一了 Parser / Generator 当前阶段使用的核心协议模型，并修复了 `strict=True` 导致 FastAPI 枚举字段跨服务传输失败的问题。  
-2. 已完成 Parser 工作流的最小闭环改造，当前状态机收缩为 `parser_initialize -> gen_stateless -> archive_success`，可稳定完成任务初始化、`UserTaskSpec` 落盘、Generator 调度与结果归档。  
-3. 已完成 Generator 内部 LangGraph 骨架重构，形成 `init_context -> architect -> coder -> finalize` 四节点流程，并在**不依赖 LLM 接口**的情况下实现基于规则占位的 `SpecReg` 与 Verilog RTL 生成。  
-4. 已完成 Docker 三服务联调与宿主机入口确认：当前 Parser 对外映射端口为 `8001`，Generator / Verify 保持仅容器内可见，符合既定三容器网络隔离设计。  
-5. 已成功跑通首个 Parser + Generator 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json` 与 `{top_module}.v`。
+1. 已完成 `src/common/models.py` 的第一轮稳定化重构，统一了 Parser / Generator / Verify 当前阶段使用的核心协议模型，并修复了 `strict=True` 导致 FastAPI 枚举字段跨服务传输失败的问题。
+
+2. 已完成 Parser 工作流从最小生成闭环到完整编排闭环的恢复，当前主路径已扩展为 `parser_initialize -> gen_stateless -> verify_stateless -> route -> archive`，能够稳定完成任务初始化、UserTaskSpec 落盘、Generator 调度、Verify 调度、结果路由与归档。
+
+3. 已完成 Generator 内部 LangGraph 骨架重构，形成 `init_context -> architect -> coder -> finalize` 四节点流程，并在不依赖 LLM 接口的情况下实现基于规则占位的 `SpecReg` 与 Verilog RTL 生成。
+
+4. 已完成 Verify Stub V1 的最小实现，形成 `init_context -> semantic_check -> compile_check -> finalize` 四节点流程，支持 `SpecReg` / RTL 文件存在性检查、SpecReg 解析校验、顶层 module / ports 的最小静态契约核查，以及可选的 `iverilog` 编译校验。
+
+5. 已固化 Verify 侧报告落盘约定：当前验证报告统一输出到 `shared_workspace/TASK_ID/sim/VerifyRpt_iter{iteration}.json`，编译日志输出到 `shared_workspace/TASK_ID/sim/compile_iter{iteration}.log`，与 Generator 侧的 `SpecReg_iter{iteration}.json` 形成版本对应关系。
+
+6. 已完成 Docker 三服务联调与运行时挂载修正：当前 Parser 对外映射端口为 `8001`，Generator / Verify 保持仅容器内可见；同时已补齐 `Output` 与 `shared_workspace` 的统一挂载，解决此前归档结果仅存在容器内部、宿主机不可见的问题。
+
+7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。

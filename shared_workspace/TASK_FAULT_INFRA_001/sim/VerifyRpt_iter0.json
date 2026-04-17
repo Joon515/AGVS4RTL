@@ -1,0 +1,23 @@
+{
+  "task_id": "TASK_FAULT_INFRA_001",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "demo_top",
+  "created_at": "2026-04-17T11:34:34.499826Z",
+  "source_stage": "verify",
+  "verdict": "INFRA_ERROR",
+  "error_details": {
+    "mismatched_ports": [],
+    "compile_errors": [],
+    "failed_assertions": [],
+    "infra_errors": [
+      "failed to load SpecReg from /app/Output/TASK_20260417T112330Z_74d5dc88/Result/shared_workspace/specs/SpecReg_iter0.json: SpecReg not found at /app/Output/TASK_20260417T112330Z_74d5dc88/Result/shared_workspace/specs/SpecReg_iter0.json"
+    ],
+    "suggested_fix": "check verify environment, input file paths, and upstream artifacts"
+  },
+  "line_coverage_pct": null,
+  "toggle_coverage_pct": null,
+  "sim_log_path": null,
+  "wave_file_path": null
+}

@@ -1,45 +1,57 @@
 from fastapi import FastAPI
-from pathlib import Path
 from pydantic import BaseModel, Field
+import logging
 
-from src.common.models import (
-    ApiResponse,
-    ErrorSnapshot,
-    VerifyNodeOutput,
-    VerifyRpt,
-    VerifyTaskPayload,
-    VerifyVerdict,
-)
+from src.common.models import ApiResponse, VerifyNodeOutput, VerifyTaskPayload
+from src.verify.workflow import run_verify_workflow
 
 
 class HealthStatus(BaseModel):
+    """服务探活响应体。"""
     service: str = Field(..., description="服务名称")
     state: str = Field(..., description="探活状态")
     detail: str = Field(..., description="探活补充信息")
 
 
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="AGVS4RTL Verify Service",
     version="0.1.0",
-    description="内部验证服务，负责静态检查与仿真验证。",
+    description="内部验证服务，负责对生成的 SpecReg 与 RTL 执行最小闭环验证。",
 )
 
 
 @app.get("/health", response_model=ApiResponse[HealthStatus])
 async def health_check() -> ApiResponse[HealthStatus]:
+    """
+    健康检查接口。
+
+    用于容器探活与内部服务可用性检测。
+    """
     return ApiResponse(
         status="success",
         message="verify service is ready",
         data=HealthStatus(
             service="verify",
             state="ready",
-            detail="internal verification endpoint is available",
+            detail="internal service endpoint is available",
         ),
     )
 
 
 @app.get("/", response_model=ApiResponse[HealthStatus])
 async def root() -> ApiResponse[HealthStatus]:
+    """
+    根路径接口。
+
+    返回服务基本状态信息，提示当前服务为内部容器调用用途。
+    """
     return ApiResponse(
         status="success",
         message="verify service is online",
@@ -53,44 +65,56 @@ async def root() -> ApiResponse[HealthStatus]:
 
 @app.post("/v1/verify", response_model=ApiResponse[VerifyNodeOutput])
 async def stateless_verify(payload: VerifyTaskPayload) -> ApiResponse[VerifyNodeOutput]:
-    sim_dir = Path(payload.task.shared_task_dir) / "sim"
-    sim_dir.mkdir(parents=True, exist_ok=True)
+    """
+    验证服务主入口。
 
-    spec_exists = Path(payload.spec_file_path).exists()
-    rtl_exists = Path(payload.rtl_path).exists()
+    输入：
+    - VerifyTaskPayload：由 Parser/Orchestrator 下发的轻量验证任务载荷，
+      包含原始任务信息、SpecReg 文件路径与 RTL 文件路径。
 
-    if spec_exists and rtl_exists:
-        verdict = VerifyVerdict.PASS
-        errors = ErrorSnapshot()
-        summary = f"verify PASS for {payload.rtl_path}"
-    else:
-        verdict = VerifyVerdict.FAIL_SEMANTIC
-        errors = ErrorSnapshot(
-            mismatched_ports=["spec or rtl artifact missing"],
-            suggested_fix="rerun generation or check spec_file_path/rtl_path",
+    输出：
+    - ApiResponse[VerifyNodeOutput]：
+      返回结构化验证报告 VerifyRpt 以及简要摘要。
+
+    说明：
+    - 当前接口为同步阻塞式执行。
+    - 服务本身不返回大段日志文本，而是将验证报告和编译日志落盘到 SharedWorkspace 后返回结构化结果。
+    """
+    try:
+        logger.info(
+            "收到验证请求: task_id=%s, iteration=%s, top_module=%s, spec_file_path=%s, rtl_path=%s",
+            payload.task.task_id,
+            payload.task.iteration,
+            payload.task.top_module,
+            payload.spec_file_path,
+            payload.rtl_path,
         )
-        summary = "verify FAIL due to missing artifacts"
 
-    report_path = sim_dir / f"{payload.task.top_module}_report_iter{payload.task.iteration}.json"
-    sim_log_path = sim_dir / f"{payload.task.top_module}_sim_iter{payload.task.iteration}.log"
-    report = VerifyRpt(
-        task_id=payload.task.task_id,
-        iteration=payload.task.iteration,
-        intent=payload.task.intent,
-        top_module=payload.task.top_module,
-        verdict=verdict,
-        error_details=errors,
-        sim_log_path=str(sim_log_path),
-        wave_file_path=None,
-    )
-    report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
-    sim_log_path.write_text(summary + "\n", encoding="utf-8")
+        verify_output = run_verify_workflow(payload)
 
-    return ApiResponse(
-        status="success",
-        message="stateless verification completed",
-        data=VerifyNodeOutput(
-            report=report,
-            summary=summary,
-        ),
-    )
+        logger.info(
+            "验证完成: task_id=%s, iteration=%s, verdict=%s",
+            payload.task.task_id,
+            payload.task.iteration,
+            verify_output.report.verdict,
+        )
+
+        return ApiResponse(
+            status="success",
+            message="stateless verification completed via workflow",
+            data=verify_output,
+        )
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "验证工作流执行失败: task_id=%s, iteration=%s, error=%s",
+            payload.task.task_id,
+            payload.task.iteration,
+            exc,
+            exc_info=True,
+        )
+        return ApiResponse(
+            status="error",
+            message=f"verify workflow failed: {exc}",
+            data=None,
+        )
