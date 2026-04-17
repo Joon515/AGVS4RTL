@@ -102,3 +102,15 @@
 - 当前系统阶段性状态更新为：`Parser + Generator + Verify Stub V1` 最小生成-验证-归档闭环已可运行，下一阶段将优先补充失败注入测试与 retry 路径验收，再逐步增强 Verify 的静态契约检查粒度与多轮修复闭环能力。
 
 ---
+
+# 2026-04-17 v3
+
+- 完成 Verify Stub V1 接入与联调，恢复 Parser -> Gen -> Verify -> Archive 最小闭环。
+- 完成 Verify 服务 API 与内部 LangGraph 工作流骨架落地，形成 init_context -> semantic_check -> compile_check -> finalize 四节点流程。
+- 完成 VerifyRpt_iterN.json 与 compile_iterN.log 的共享工作区落盘约定，目录统一为 shared_workspace/TASK_ID/sim/。
+- 完成 Verify Stub V1 失败注入测试，已验证以下 verdict 分支可用：
+  - PASS
+  - INFRA_ERROR（SpecReg 缺失 / RTL 缺失）
+  - FAIL_COMPILE（RTL 语法错误）
+  - FAIL_SEMANTIC（顶层端口与 SpecReg 不匹配）
+- 当前系统已具备最小“生成 + 验证 + 归档”闭环能力，为后续 retry 修复闭环与 Verify 动态仿真扩展提供稳定基线。
