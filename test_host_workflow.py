@@ -46,6 +46,25 @@ def _assert_common_success(result):
     print(f"💻 源码文件落盘于: {gen_output['rtl_path']}")
 
 
+def _assert_common_failure(result, expected_verdict):
+    data = result.get("data", {})
+    trace = data.get("trace", [])
+    executed_nodes = [step["node"] for step in trace]
+
+    print(f"🛤️  实际执行轨迹: {' -> '.join(executed_nodes)}")
+
+    assert data.get("success") is False, f"❌ 工作流不应成功: {data}"
+    assert data.get("final_stage") == "archive_failed", f"❌ 未进入失败归档: {data.get('final_stage')}"
+    assert "parser_initialize" in executed_nodes, "❌ 缺失 parser_initialize 节点"
+    assert "gen_stateless" in executed_nodes, "❌ 缺失 gen_stateless 节点"
+    assert "verify_stateless" in executed_nodes, "❌ 缺失 verify_stateless 节点"
+    assert "archive_failed" in executed_nodes, "❌ 缺失 archive_failed 节点"
+
+    verify_output = data.get("verify_output", {})
+    actual_verdict = verify_output.get("report", {}).get("verdict")
+    assert actual_verdict == expected_verdict, f"❌ 预期 {expected_verdict}，实际 {actual_verdict}"
+
+
 def run_pass_case(url):
     payload = {
         "top_module": "seq_done_logic",
@@ -87,12 +106,62 @@ def run_retry_semantic_case(url):
     assert "FAIL_SEMANTIC" in gen_output.get("summary", ""), "❌ Generator 摘要未体现读取上一轮 VerifyRpt"
 
 
+def run_retry_compile_case(url):
+    payload = {
+        "top_module": "seq_done_compile_retry",
+        "raw_input_text": "Generate a simple sequential done logic module and validate compile retry repair",
+        "refined_requirements": [
+            "reset to 0",
+            "otherwise 1",
+            "AGVS4RTL_INJECT_FAIL_COMPILE_ONCE",
+        ],
+        "max_iterations": 2,
+    }
+
+    print("\n===== FAIL_COMPILE -> retry -> PASS 闭环验收 =====")
+    result = _post_workflow(url, payload)
+    _assert_common_success(result)
+
+    data = result.get("data", {})
+    executed_nodes = _executed_nodes(result)
+    assert "prepare_retry" in executed_nodes, "❌ 编译失败场景未进入 prepare_retry"
+
+    retry_steps = [step for step in data.get("trace", []) if step["node"] == "prepare_retry"]
+    assert retry_steps and retry_steps[0]["iteration"] == 1, "❌ prepare_retry 未推进到第 1 轮"
+
+    gen_output = data.get("gen_output", {})
+    assert "iteration 1" in gen_output.get("summary", ""), "❌ 最终生成结果不是第 1 轮产物"
+    assert "FAIL_COMPILE" in gen_output.get("summary", ""), "❌ Generator 摘要未体现读取上一轮编译失败 VerifyRpt"
+
+
+def run_infra_error_no_retry_case(url):
+    payload = {
+        "top_module": "seq_done_infra_fail",
+        "raw_input_text": "Generate a simple sequential done logic module and validate infra failure routing",
+        "refined_requirements": [
+            "reset to 0",
+            "otherwise 1",
+            "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE",
+        ],
+        "max_iterations": 2,
+    }
+
+    print("\n===== INFRA_ERROR -> archive_failed 非重试验收 =====")
+    result = _post_workflow(url, payload)
+    _assert_common_failure(result, "INFRA_ERROR")
+
+    executed_nodes = _executed_nodes(result)
+    assert "prepare_retry" not in executed_nodes, "❌ INFRA_ERROR 不应进入 prepare_retry"
+
+
 def main():
     url = "http://localhost:8001/v1/workflow/run"
 
     try:
         run_pass_case(url)
         run_retry_semantic_case(url)
+        run_retry_compile_case(url)
+        run_infra_error_no_retry_case(url)
         print("\n🎉 测试通过！Parser + Generator + Verify retry 闭环运转正常。")
 
     except httpx.RequestError as e:

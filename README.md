@@ -54,7 +54,7 @@ AGVS4RTL/
 
 ### 未来改进项目
 
-1. 扩展 **失败注入测试与重试闭环验收**。当前系统已完成 `FAIL_SEMANTIC -> prepare_retry -> PASS` 的最小 retry 修复闭环，下一阶段重点补充 `FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR` 不重试归档、达到 `max_iterations` 后失败归档等边界场景，使路由策略从“语义失败可修复”扩展到多 verdict 可验证。
+1. 扩展 **失败注入测试与重试闭环验收**。当前系统已完成 `FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS` 与 `INFRA_ERROR -> archive_failed` 的路由验收，下一阶段重点补充达到 `max_iterations` 后失败归档等边界场景，使路由策略从“可修复失败能重试”扩展到“不可修复/超限失败可归档”。
 
 2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、最小顶层 module / ports 静态核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强方向、位宽、时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
 
@@ -82,4 +82,4 @@ AGVS4RTL/
 
 7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。
 
-8. 已完成 retry 修复闭环的最小验收：通过宿主机脚本覆盖普通 PASS 主路径，以及 `FAIL_SEMANTIC -> prepare_retry -> PASS` 场景。当前 Parser 可稳定执行 `parser_initialize -> gen_stateless -> verify_stateless -> prepare_retry -> gen_stateless -> verify_stateless -> archive_success`，Generator 在 retry 轮会读取上一轮 `VerifyRpt_iterN.json`，最终归档保留第 0/1 轮 SpecReg 与 VerifyRpt。
+8. 已完成 retry 修复闭环与非重试失败归档的最小验收：通过宿主机脚本覆盖普通 PASS 主路径、`FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS` 与 `INFRA_ERROR -> archive_failed` 场景。当前 Parser 可稳定执行可重试失败的二轮修复路径，并对不可重试基础设施错误直接进入失败归档。

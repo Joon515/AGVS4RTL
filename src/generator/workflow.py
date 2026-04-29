@@ -476,6 +476,7 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     if rtl_code is None:
         raise ValueError("rtl_code is missing at finalize stage")
 
+    requirements_text = "\n".join(spec_reg.functional_requirements)
     shared_task_dir = Path(task.shared_task_dir)
     specs_dir = shared_task_dir / "specs"
     rtl_dir = shared_task_dir / "rtl"
@@ -488,6 +489,8 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
 
     rtl_path = rtl_dir / f"{task.top_module}.v"
     rtl_path.write_text(rtl_code, encoding="utf-8")
+    if task.iteration == 0 and "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE" in requirements_text:
+        rtl_path.unlink()
 
     verify_rpt = state.get("verify_rpt")
     summary = f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}"

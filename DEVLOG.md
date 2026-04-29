@@ -124,3 +124,17 @@
 - 扩展 `test_host_workflow.py`，覆盖两个宿主机端到端场景：普通 PASS 主路径，以及 `FAIL_SEMANTIC -> retry -> PASS` 修复闭环。
 - 验证结果：使用 `.venv-1/bin/python test_host_workflow.py` 跑通，retry 样例归档到 `Output/TASK_20260429T020447Z_af797796/Result/shared_workspace/`，其中 `VerifyRpt_iter0.json` verdict 为 `FAIL_SEMANTIC`，`VerifyRpt_iter1.json` verdict 为 `PASS`，并保留 `SpecReg_iter0.json`、`SpecReg_iter1.json` 与最终 RTL。
 - 语法检查：宿主机系统 Python 因仓库内既有 `src/**/__pycache__` 权限问题无法直接写入 pyc，已改用 `PYTHONPYCACHEPREFIX=/tmp/agvs4rtl_pycache /usr/bin/python3 -m py_compile ...` 完成关键文件语法编译检查。
+
+# 2026-04-29 v2
+
+- 扩展宿主机端到端验收脚本，新增 `FAIL_COMPILE -> prepare_retry -> PASS` 闭环场景，覆盖 Generator 第 0 轮注入 Verilog 语法错误、Verify 产出 `FAIL_COMPILE`、Parser 路由到 `prepare_retry`、第 1 轮 Generator 恢复正确 RTL 并最终 PASS 的完整路径。
+- 当前 `test_host_workflow.py` 已覆盖三条路径：普通 PASS 主路径、`FAIL_SEMANTIC -> retry -> PASS`、`FAIL_COMPILE -> retry -> PASS`。
+- 验证结果：使用 `.venv-1/bin/python test_host_workflow.py` 跑通，编译失败 retry 样例归档到 `Output/TASK_20260429T022026Z_58f4b115/Result/shared_workspace/`，其中 `VerifyRpt_iter0.json` verdict 为 `FAIL_COMPILE`，`VerifyRpt_iter1.json` verdict 为 `PASS`。
+- 语法检查：继续使用 `PYTHONPYCACHEPREFIX=/tmp/agvs4rtl_pycache /usr/bin/python3 -m py_compile src/common/models.py src/parser/workflow.py src/generator/workflow.py src/verify/workflow.py test_host_workflow.py`，关键 Python 文件均可编译。
+
+# 2026-04-29 v3
+
+- 新增 `INFRA_ERROR -> archive_failed` 非重试路径验收，证明 `VerifyRpt.is_retryable()` 不会把基础设施错误纳入 `prepare_retry` 修复循环。
+- Generator 增加 `AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE` 验收钩子：第 0 轮写出 SpecReg 后删除 RTL 文件，使 Verify 在读取 RTL 阶段稳定产出 `INFRA_ERROR`，用于验证 Parser 路由策略。
+- `test_host_workflow.py` 当前覆盖四条宿主机端到端路径：普通 PASS 主路径、`FAIL_SEMANTIC -> retry -> PASS`、`FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR -> archive_failed`。
+- 验证结果：重启 Generator 服务后使用 `.venv-1/bin/python test_host_workflow.py` 跑通，INFRA 样例归档到 `Output/TASK_20260429T022447Z_7179f99e/Archive/shared_workspace/`，其中 `VerifyRpt_iter0.json` verdict 为 `INFRA_ERROR`，执行轨迹为 `parser_initialize -> gen_stateless -> verify_stateless -> archive_failed`。
