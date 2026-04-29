@@ -114,3 +114,13 @@
   - FAIL_COMPILE（RTL 语法错误）
   - FAIL_SEMANTIC（顶层端口与 SpecReg 不匹配）
 - 当前系统已具备最小“生成 + 验证 + 归档”闭环能力，为后续 retry 修复闭环与 Verify 动态仿真扩展提供稳定基线。
+
+# 2026-04-29
+
+- 完成 retry 修复闭环的最小验收实现：Parser 已可稳定执行 `parser_initialize -> gen_stateless -> verify_stateless -> prepare_retry -> gen_stateless -> verify_stateless -> archive_success`。
+- 将 `prepare_retry` 轨迹状态从 `error` 调整为 `success`，明确其语义为“已成功准备下一轮生成”，避免测试与后续可观测性把可恢复失败误判为节点执行失败。
+- 为 Generator 增加轻量失败注入钩子，用于验收闭环而不改跨服务协议：`AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE` 会在第 0 轮生成缺失 `o_done` 端口的 RTL，第 1 轮恢复到保守正确模板；同时预留 `AGVS4RTL_INJECT_FAIL_COMPILE_ONCE` 用于后续编译失败闭环测试。
+- Generator 在重试轮次成功读取上一轮 `VerifyRpt_iterN.json` 后，会在 `GenNodeOutput.summary` 中记录上一轮 verdict，便于宿主机测试确认 `prepare_retry -> gen_stateless` 确实消费了上一轮验证报告。
+- 扩展 `test_host_workflow.py`，覆盖两个宿主机端到端场景：普通 PASS 主路径，以及 `FAIL_SEMANTIC -> retry -> PASS` 修复闭环。
+- 验证结果：使用 `.venv-1/bin/python test_host_workflow.py` 跑通，retry 样例归档到 `Output/TASK_20260429T020447Z_af797796/Result/shared_workspace/`，其中 `VerifyRpt_iter0.json` verdict 为 `FAIL_SEMANTIC`，`VerifyRpt_iter1.json` verdict 为 `PASS`，并保留 `SpecReg_iter0.json`、`SpecReg_iter1.json` 与最终 RTL。
+- 语法检查：宿主机系统 Python 因仓库内既有 `src/**/__pycache__` 权限问题无法直接写入 pyc，已改用 `PYTHONPYCACHEPREFIX=/tmp/agvs4rtl_pycache /usr/bin/python3 -m py_compile ...` 完成关键文件语法编译检查。

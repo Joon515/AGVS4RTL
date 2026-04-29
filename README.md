@@ -54,13 +54,13 @@ AGVS4RTL/
 
 ### 未来改进项目
 
-1. 引入 **失败注入测试与重试闭环验收**。当前系统已完成 `Parser + Generator + Verify Stub V1` 的最小生成-验证-归档闭环，下一阶段最重要的是补充 `FAIL_COMPILE`、`INFRA_ERROR` 等失败场景测试，并验证 `parser_initialize -> gen_stateless -> verify_stateless -> route -> prepare_retry -> gen_stateless` 的重试路径是否可稳定运行，使系统从“能验证”提升到“能闭环修复”。
+1. 扩展 **失败注入测试与重试闭环验收**。当前系统已完成 `FAIL_SEMANTIC -> prepare_retry -> PASS` 的最小 retry 修复闭环，下一阶段重点补充 `FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR` 不重试归档、达到 `max_iterations` 后失败归档等边界场景，使路由策略从“语义失败可修复”扩展到多 verdict 可验证。
 
 2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、最小顶层 module / ports 静态核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强方向、位宽、时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
 
 3. 扩展 Verify 的 **动态仿真能力**。在 V1 Stub 稳定后，后续将逐步引入基于 `functional_requirements`、`corner_cases`、`illegal_conditions` 和 `verification_directives` 的测试激励生成能力，接入 `cocotb + iverilog` 形成从静态核查到动态行为验证的完整闭环。
 
-4. 强化 Generator 的 **多轮修复利用能力**。虽然 Generator 已支持在 `iteration > 0` 时尝试读取上一轮 `VerifyRpt` 与 `SpecReg`，但当前修复逻辑仍以规则占位为主。下一阶段需要让 Architect / Coder 节点更真实地消费 `VerifyRpt.error_details` 与 `suggested_fix`，形成面向失败类型的差异化修复策略。
+4. 强化 Generator 的 **多轮修复利用能力**。Generator 已支持在 `iteration > 0` 时读取上一轮 `VerifyRpt` 与 `SpecReg`，并在 retry 轮产物摘要中体现上一轮 verdict。下一阶段需要让 Architect / Coder 节点更真实地消费 `VerifyRpt.error_details` 与 `suggested_fix`，形成面向 `FAIL_SEMANTIC`、`FAIL_COMPILE` 等失败类型的差异化修复策略。
 
 5. 补充 **工作流异常治理与可观测性**。当前工作流已经具备基础 `trace` 记录与归档机制，后续可继续增加更细粒度的错误分类、节点级耗时统计、任务级日志关联、失败现场保留策略与验收脚本，提升联调效率与问题定位能力。
 
@@ -81,3 +81,5 @@ AGVS4RTL/
 6. 已完成 Docker 三服务联调与运行时挂载修正：当前 Parser 对外映射端口为 `8001`，Generator / Verify 保持仅容器内可见；同时已补齐 `Output` 与 `shared_workspace` 的统一挂载，解决此前归档结果仅存在容器内部、宿主机不可见的问题。
 
 7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。
+
+8. 已完成 retry 修复闭环的最小验收：通过宿主机脚本覆盖普通 PASS 主路径，以及 `FAIL_SEMANTIC -> prepare_retry -> PASS` 场景。当前 Parser 可稳定执行 `parser_initialize -> gen_stateless -> verify_stateless -> prepare_retry -> gen_stateless -> verify_stateless -> archive_success`，Generator 在 retry 轮会读取上一轮 `VerifyRpt_iterN.json`，最终归档保留第 0/1 轮 SpecReg 与 VerifyRpt。

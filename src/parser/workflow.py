@@ -362,7 +362,7 @@ def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
         "trace": [
             WorkflowTraceStep(
                 node="prepare_retry",
-                status="error",
+                status="success",
                 detail=detail,
                 iteration=next_iteration,
             )

@@ -310,6 +310,42 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
     - 代码生成应以 SpecReg 为唯一契约依据，而不是直接回看原始 prompt
     """
     top_module = spec_reg.top_module
+    requirements_text = "\n".join(spec_reg.functional_requirements)
+
+    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE" in requirements_text:
+        return (
+            f"module {top_module}(\n"
+            "    input wire i_clk,\n"
+            "    input wire i_rst_n\n"
+            ");\n"
+            "\n"
+            "always @(posedge i_clk or negedge i_rst_n) begin\n"
+            "    if (!i_rst_n)\n"
+            "        o_done <= 1'b0;\n"
+            "    else\n"
+            "        o_done <= 1'b1;\n"
+            "end\n"
+            "\n"
+            "endmodule\n"
+        )
+
+    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_COMPILE_ONCE" in requirements_text:
+        return (
+            f"module {top_module}(\n"
+            "    input wire i_clk,\n"
+            "    input wire i_rst_n,\n"
+            "    output reg o_done\n"
+            ");\n"
+            "\n"
+            "always @(posedge i_clk or negedge i_rst_n) begin\n"
+            "    if (!i_rst_n) begin\n"
+            "        o_done <= 1'b0;\n"
+            "    else\n"
+            "        o_done <= 1'b1;\n"
+            "end\n"
+            "\n"
+            "endmodule\n"
+        )
 
     return (
         f"module {top_module}(\n"
@@ -453,10 +489,15 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     rtl_path = rtl_dir / f"{task.top_module}.v"
     rtl_path.write_text(rtl_code, encoding="utf-8")
 
+    verify_rpt = state.get("verify_rpt")
+    summary = f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}"
+    if verify_rpt is not None:
+        summary += f" after previous verification verdict {verify_rpt.verdict}"
+
     gen_output = GenNodeOutput(
         spec_file_path=str(spec_file_path),
         rtl_path=str(rtl_path),
-        summary=f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}",
+        summary=summary,
     )
 
     return {"gen_output": gen_output}

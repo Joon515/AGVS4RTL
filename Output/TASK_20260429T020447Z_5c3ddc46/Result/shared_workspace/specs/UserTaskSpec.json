@@ -1,0 +1,19 @@
+{
+  "task_id": "TASK_20260429T020447Z_5c3ddc46",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "FIX_BUG",
+  "top_module": "seq_done_logic",
+  "created_at": "2026-04-29T02:04:47.736983Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260429T020447Z_5c3ddc46/Origin/request.txt",
+  "refined_requirements": [
+    "reset to 0",
+    "otherwise 1"
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260429T020447Z_5c3ddc46",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260429T020447Z_5c3ddc46/Result",
+  "target_protocol": null,
+  "design_rules": []
+}
