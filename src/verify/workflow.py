@@ -14,6 +14,7 @@ from src.common.models import (
     CompileError,
     ErrorSnapshot,
     PortMismatch,
+    PortDirection,
     SpecReg,
     VerifyNodeOutput,
     VerifyRpt,
@@ -53,6 +54,12 @@ class VerifyWorkflowState(TypedDict):
     compile_errors: Optional[List[CompileError]]
     verify_rpt: Optional[VerifyRpt]
     verify_output: Optional[VerifyNodeOutput]
+
+
+class RtlPortDecl(TypedDict):
+    name: str
+    direction: Optional[PortDirection]
+    width: str
 
 
 def _build_system_messages(task_payload: VerifyTaskPayload) -> List[Dict[str, str]]:
@@ -169,6 +176,51 @@ def _extract_declared_port_names(rtl_text: str, top_module: str) -> List[str]:
     return port_names
 
 
+def _normalize_rtl_width(width_range: Optional[str]) -> str:
+    if width_range is None:
+        return "1"
+
+    compact = re.sub(r"\s+", "", width_range)
+    match = re.fullmatch(r"\[(\d+):(\d+)\]", compact)
+    if not match:
+        return compact
+
+    left, right = (int(value) for value in match.groups())
+    return str(abs(left - right) + 1)
+
+
+def _extract_declared_ports(rtl_text: str, top_module: str) -> Dict[str, RtlPortDecl]:
+    block = _extract_module_port_block(rtl_text, top_module)
+    if block is None:
+        return {}
+
+    ports: Dict[str, RtlPortDecl] = {}
+    for raw_item in block.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+
+        match = re.match(
+            r"^(?:(input|output|inout)\b)?\s*"
+            r"(?:(wire|reg|logic)\b)?\s*"
+            r"(\[[^\]]+\])?\s*"
+            r"([A-Za-z_][A-Za-z0-9_$]*)$",
+            item,
+        )
+        if not match:
+            continue
+
+        direction_text, _net_type, width_range, name = match.groups()
+        direction = PortDirection(direction_text) if direction_text is not None else None
+        ports[name] = {
+            "name": name,
+            "direction": direction,
+            "width": _normalize_rtl_width(width_range),
+        }
+
+    return ports
+
+
 def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMismatch]:
     """
     执行最小静态契约检查。
@@ -177,6 +229,8 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
     1. RTL 非空
     2. 存在顶层 module <top_module>(...)
     3. SpecReg 中声明的端口在 RTL 顶层端口列表中都可找到
+    4. RTL 顶层端口方向与 SpecReg 一致
+    5. RTL 顶层端口位宽与 SpecReg 一致
 
     注意：
     - 当前 models.py 中 FAIL_SEMANTIC 需要 mismatched_ports 非空。
@@ -204,16 +258,43 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
         )
         return mismatches
 
-    actual_ports = set(_extract_declared_port_names(rtl_text, spec_reg.top_module))
-    expected_ports = [port.name for port in spec_reg.ports]
+    actual_port_decls = _extract_declared_ports(rtl_text, spec_reg.top_module)
+    actual_ports = set(actual_port_decls.keys())
 
-    for expected_port in expected_ports:
-        if expected_port not in actual_ports:
+    for expected_port in spec_reg.ports:
+        if expected_port.name not in actual_ports:
             mismatches.append(
                 PortMismatch(
-                    expected_port=expected_port,
+                    expected_port=expected_port.name,
                     actual_port=None,
                     detail="expected top-level port missing in RTL module declaration",
+                )
+            )
+            continue
+
+        actual_port = actual_port_decls[expected_port.name]
+        if actual_port["direction"] != expected_port.direction:
+            mismatches.append(
+                PortMismatch(
+                    expected_port=expected_port.name,
+                    actual_port=actual_port["name"],
+                    detail=(
+                        "port direction mismatch: "
+                        f"expected {expected_port.direction.value}, "
+                        f"actual {actual_port['direction'].value if actual_port['direction'] else 'unspecified'}"
+                    ),
+                )
+            )
+
+        if actual_port["width"] != expected_port.width:
+            mismatches.append(
+                PortMismatch(
+                    expected_port=expected_port.name,
+                    actual_port=actual_port["name"],
+                    detail=(
+                        "port width mismatch: "
+                        f"expected {expected_port.width}, actual {actual_port['width']}"
+                    ),
                 )
             )
 
@@ -479,7 +560,6 @@ def semantic_check_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     3. 若存在不匹配，生成 FAIL_SEMANTIC 报告。
 
     后续扩展方向：
-    - 增加方向/位宽核查
     - 增加 clock/reset 端口约束核查
     - 增加 protocol 映射检查
     """

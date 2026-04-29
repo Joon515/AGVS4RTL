@@ -138,3 +138,10 @@
 - Generator 增加 `AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE` 验收钩子：第 0 轮写出 SpecReg 后删除 RTL 文件，使 Verify 在读取 RTL 阶段稳定产出 `INFRA_ERROR`，用于验证 Parser 路由策略。
 - `test_host_workflow.py` 当前覆盖四条宿主机端到端路径：普通 PASS 主路径、`FAIL_SEMANTIC -> retry -> PASS`、`FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR -> archive_failed`。
 - 验证结果：重启 Generator 服务后使用 `.venv-1/bin/python test_host_workflow.py` 跑通，INFRA 样例归档到 `Output/TASK_20260429T022447Z_7179f99e/Archive/shared_workspace/`，其中 `VerifyRpt_iter0.json` verdict 为 `INFRA_ERROR`，执行轨迹为 `parser_initialize -> gen_stateless -> verify_stateless -> archive_failed`。
+
+# 2026-04-29 v4
+
+- 增强 Verify 静态契约核查：顶层端口解析从“只取端口名”扩展到解析 `direction` 与位宽范围，支持把 `[N:0]` 归一化为实际位宽并与 SpecReg 的 `PortDef.width` 对比。
+- `FAIL_SEMANTIC` 现在可明确报告端口方向错误与端口位宽错误，例如 `port direction mismatch: expected output, actual input`、`port width mismatch: expected 1, actual 2`。
+- Generator 增加 `AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE` 与 `AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE` 两个验收钩子，用于稳定触发静态契约细节失败并验证 retry 修复路径。
+- `test_host_workflow.py` 扩展为六条宿主机端到端路径：普通 PASS 主路径、`FAIL_SEMANTIC -> retry -> PASS`、`FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR -> archive_failed`、端口方向 mismatch retry、端口位宽 mismatch retry。

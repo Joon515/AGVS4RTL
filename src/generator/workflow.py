@@ -347,6 +347,35 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
             "endmodule\n"
         )
 
+    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE" in requirements_text:
+        return (
+            f"module {top_module}(\n"
+            "    input wire i_clk,\n"
+            "    input wire i_rst_n,\n"
+            "    input wire o_done\n"
+            ");\n"
+            "\n"
+            "endmodule\n"
+        )
+
+    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE" in requirements_text:
+        return (
+            f"module {top_module}(\n"
+            "    input wire i_clk,\n"
+            "    input wire i_rst_n,\n"
+            "    output reg [1:0] o_done\n"
+            ");\n"
+            "\n"
+            "always @(posedge i_clk or negedge i_rst_n) begin\n"
+            "    if (!i_rst_n)\n"
+            "        o_done <= 2'b00;\n"
+            "    else\n"
+            "        o_done <= 2'b01;\n"
+            "end\n"
+            "\n"
+            "endmodule\n"
+        )
+
     return (
         f"module {top_module}(\n"
         "    input wire i_clk,\n"

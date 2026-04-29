@@ -2,6 +2,7 @@ import httpx
 import json
 import time
 import sys
+from pathlib import Path
 
 
 def _post_workflow(url, payload):
@@ -154,6 +155,67 @@ def run_infra_error_no_retry_case(url):
     assert "prepare_retry" not in executed_nodes, "❌ INFRA_ERROR 不应进入 prepare_retry"
 
 
+def _assert_semantic_retry(result, expected_detail):
+    _assert_common_success(result)
+
+    data = result.get("data", {})
+    executed_nodes = _executed_nodes(result)
+    assert "prepare_retry" in executed_nodes, "❌ 静态契约失败场景未进入 prepare_retry"
+
+    retry_steps = [step for step in data.get("trace", []) if step["node"] == "prepare_retry"]
+    assert retry_steps and retry_steps[0]["iteration"] == 1, "❌ prepare_retry 未推进到第 1 轮"
+
+    report_path = Path("Output") / data["task_id"] / "Result" / "shared_workspace" / "sim" / "VerifyRpt_iter0.json"
+    with report_path.open(encoding="utf-8") as report_file:
+        first_report = json.load(report_file)
+
+    mismatch_details = [
+        item.get("detail", "")
+        for item in first_report.get("error_details", {}).get("mismatched_ports", [])
+    ]
+    assert any(expected_detail in detail for detail in mismatch_details), (
+        f"❌ VerifyRpt 未包含静态契约诊断 {expected_detail}: {mismatch_details}"
+    )
+
+    gen_output = data.get("gen_output", {})
+    assert "iteration 1" in gen_output.get("summary", ""), "❌ 最终生成结果不是第 1 轮产物"
+    assert "FAIL_SEMANTIC" in gen_output.get("summary", ""), "❌ Generator 摘要未体现读取上一轮静态契约失败 VerifyRpt"
+
+
+def run_port_direction_retry_case(url):
+    payload = {
+        "top_module": "seq_done_direction_retry",
+        "raw_input_text": "Generate a simple sequential done logic module and validate port direction repair",
+        "refined_requirements": [
+            "reset to 0",
+            "otherwise 1",
+            "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE",
+        ],
+        "max_iterations": 2,
+    }
+
+    print("\n===== PORT_DIRECTION mismatch -> retry -> PASS 静态契约验收 =====")
+    result = _post_workflow(url, payload)
+    _assert_semantic_retry(result, "port direction mismatch")
+
+
+def run_port_width_retry_case(url):
+    payload = {
+        "top_module": "seq_done_width_retry",
+        "raw_input_text": "Generate a simple sequential done logic module and validate port width repair",
+        "refined_requirements": [
+            "reset to 0",
+            "otherwise 1",
+            "AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE",
+        ],
+        "max_iterations": 2,
+    }
+
+    print("\n===== PORT_WIDTH mismatch -> retry -> PASS 静态契约验收 =====")
+    result = _post_workflow(url, payload)
+    _assert_semantic_retry(result, "port width mismatch")
+
+
 def main():
     url = "http://localhost:8001/v1/workflow/run"
 
@@ -162,6 +224,8 @@ def main():
         run_retry_semantic_case(url)
         run_retry_compile_case(url)
         run_infra_error_no_retry_case(url)
+        run_port_direction_retry_case(url)
+        run_port_width_retry_case(url)
         print("\n🎉 测试通过！Parser + Generator + Verify retry 闭环运转正常。")
 
     except httpx.RequestError as e:

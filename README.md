@@ -56,7 +56,7 @@ AGVS4RTL/
 
 1. 扩展 **失败注入测试与重试闭环验收**。当前系统已完成 `FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS` 与 `INFRA_ERROR -> archive_failed` 的路由验收，下一阶段重点补充达到 `max_iterations` 后失败归档等边界场景，使路由策略从“可修复失败能重试”扩展到“不可修复/超限失败可归档”。
 
-2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、最小顶层 module / ports 静态核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强方向、位宽、时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
+2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、顶层 module / ports 存在性、端口方向、端口位宽核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
 
 3. 扩展 Verify 的 **动态仿真能力**。在 V1 Stub 稳定后，后续将逐步引入基于 `functional_requirements`、`corner_cases`、`illegal_conditions` 和 `verification_directives` 的测试激励生成能力，接入 `cocotb + iverilog` 形成从静态核查到动态行为验证的完整闭环。
 
@@ -74,7 +74,7 @@ AGVS4RTL/
 
 3. 已完成 Generator 内部 LangGraph 骨架重构，形成 `init_context -> architect -> coder -> finalize` 四节点流程，并在不依赖 LLM 接口的情况下实现基于规则占位的 `SpecReg` 与 Verilog RTL 生成。
 
-4. 已完成 Verify Stub V1 的最小实现，形成 `init_context -> semantic_check -> compile_check -> finalize` 四节点流程，支持 `SpecReg` / RTL 文件存在性检查、SpecReg 解析校验、顶层 module / ports 的最小静态契约核查，以及可选的 `iverilog` 编译校验。
+4. 已完成 Verify Stub V1 的阶段性实现，形成 `init_context -> semantic_check -> compile_check -> finalize` 四节点流程，支持 `SpecReg` / RTL 文件存在性检查、SpecReg 解析校验、顶层 module / ports 存在性、端口方向、端口位宽核查，以及可选的 `iverilog` 编译校验。
 
 5. 已固化 Verify 侧报告落盘约定：当前验证报告统一输出到 `shared_workspace/TASK_ID/sim/VerifyRpt_iter{iteration}.json`，编译日志输出到 `shared_workspace/TASK_ID/sim/compile_iter{iteration}.log`，与 Generator 侧的 `SpecReg_iter{iteration}.json` 形成版本对应关系。
 
@@ -82,4 +82,4 @@ AGVS4RTL/
 
 7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。
 
-8. 已完成 retry 修复闭环与非重试失败归档的最小验收：通过宿主机脚本覆盖普通 PASS 主路径、`FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS` 与 `INFRA_ERROR -> archive_failed` 场景。当前 Parser 可稳定执行可重试失败的二轮修复路径，并对不可重试基础设施错误直接进入失败归档。
+8. 已完成 retry 修复闭环、非重试失败归档与静态契约细节的最小验收：通过宿主机脚本覆盖普通 PASS 主路径、`FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS`、`INFRA_ERROR -> archive_failed`、端口方向 mismatch retry 与端口位宽 mismatch retry 场景。当前 Parser 可稳定执行可重试失败的二轮修复路径，并对不可重试基础设施错误直接进入失败归档。
