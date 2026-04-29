@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import operator
+import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
@@ -12,6 +14,8 @@ from langgraph.graph import END, START, StateGraph
 from src.common.models import (
     GenNodeOutput,
     IntentCategory,
+    LlmRuntimeConfig,
+    ParserLlmAnalysis,
     TaskPaths,
     UserTaskSpec,
     VerifyNodeOutput,
@@ -23,6 +27,13 @@ from src.common.models import (
     build_task_paths,
     generate_global_task_id,
 )
+
+
+LLM_HEADER_ENABLED = "X-AGVS4RTL-LLM-Enabled"
+LLM_HEADER_BASE_URL = "X-AGVS4RTL-LLM-Base-URL"
+LLM_HEADER_API_KEY = "X-AGVS4RTL-LLM-API-Key"
+LLM_HEADER_MODEL = "X-AGVS4RTL-LLM-Model"
+LLM_HEADER_PROFILE = "X-AGVS4RTL-LLM-Profile"
 
 
 class WorkflowState(TypedDict):
@@ -91,6 +102,175 @@ def _build_refined_requirements(request: WorkflowRunRequest) -> List[str]:
     raise ValueError("cannot build refined_requirements from empty request")
 
 
+def _chat_completions_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    return f"{normalized}/chat/completions"
+
+
+def _resolve_llm_config(request: WorkflowRunRequest) -> LlmRuntimeConfig:
+    if request.llm is not None:
+        return request.llm
+
+    return LlmRuntimeConfig(
+        enabled=os.getenv("AGVS4RTL_LLM_ENABLED", "false").lower() == "true",
+        base_url=os.getenv("AGVS4RTL_LLM_BASE_URL") or None,
+        api_key=os.getenv("AGVS4RTL_LLM_API_KEY") or None,
+        model=os.getenv("AGVS4RTL_LLM_MODEL") or None,
+        profile=os.getenv("AGVS4RTL_LLM_PROFILE", "default"),
+    )
+
+
+def _extract_json_object(content: str) -> Dict[str, Any]:
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
+    if fence_match is not None:
+        content = fence_match.group(1)
+
+    content = content.strip()
+    start = content.find("{")
+    end = content.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("LLM parser response does not contain a JSON object")
+
+    parsed = json.loads(content[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM parser response JSON is not an object")
+    return parsed
+
+
+def _call_parser_llm(
+    llm_config: LlmRuntimeConfig,
+    request: WorkflowRunRequest,
+) -> tuple[ParserLlmAnalysis, Dict[str, Any]]:
+    if not llm_config.base_url:
+        raise ValueError("LLM is enabled but base_url is missing")
+    if llm_config.api_key is None:
+        raise ValueError("LLM is enabled but api_key is missing")
+    if not llm_config.model:
+        raise ValueError("LLM is enabled but model is missing")
+
+    allowed_intents = [intent.value for intent in IntentCategory]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the Parser node for an RTL generation workflow. "
+                "Classify the user's task and refine requirements. "
+                "Return JSON only, with keys: intent, refined_requirements, target_protocol, design_rules. "
+                f"intent must be one of: {', '.join(allowed_intents)}. "
+                "Use null when target_protocol is unknown. Keep requirements concise and actionable."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "top_module": request.top_module,
+                    "raw_input_text": request.raw_input_text,
+                    "provided_intent": request.intent.value if request.intent is not None else None,
+                    "provided_refined_requirements": request.refined_requirements,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        },
+    ]
+    payload = {
+        "model": llm_config.model,
+        "messages": messages,
+        "temperature": 0.0,
+        "stream": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
+        "Content-Type": "application/json",
+    }
+
+    with httpx.Client(timeout=60.0) as client:
+        response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
+        response.raise_for_status()
+
+    response_payload = response.json()
+    try:
+        content = response_payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError("LLM parser response is not OpenAI chat-completions compatible") from exc
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("LLM parser response content is empty")
+
+    analysis = ParserLlmAnalysis.model_validate(_extract_json_object(content))
+
+    sanitized_choices = []
+    for response_choice in response_payload.get("choices", []):
+        if not isinstance(response_choice, dict):
+            continue
+        message = response_choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        sanitized_choices.append(
+            {
+                "index": response_choice.get("index"),
+                "message": {
+                    "role": message.get("role"),
+                    "content": message.get("content"),
+                },
+                "finish_reason": response_choice.get("finish_reason"),
+            }
+        )
+
+    return analysis, {
+        "stage": "parser",
+        "profile": llm_config.profile,
+        "request": {
+            "messages": messages,
+            "temperature": payload["temperature"],
+            "stream": payload["stream"],
+        },
+        "response": {
+            "id": response_payload.get("id"),
+            "object": response_payload.get("object"),
+            "created": response_payload.get("created"),
+            "choices": sanitized_choices,
+            "usage": response_payload.get("usage"),
+        },
+        "parsed": analysis.model_dump(mode="json"),
+    }
+
+
+def _analyze_request_with_llm(
+    request: WorkflowRunRequest,
+    llm_config: LlmRuntimeConfig,
+) -> tuple[Optional[ParserLlmAnalysis], Optional[Dict[str, Any]], Optional[str]]:
+    if not llm_config.enabled:
+        return None, None, None
+    request_text = "\n".join([request.raw_input_text, *request.refined_requirements])
+    if "AGVS4RTL_INJECT_" in request_text:
+        return None, None, None
+    try:
+        analysis, transcript = _call_parser_llm(llm_config, request)
+        return analysis, transcript, None
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+def _build_llm_forward_headers(request: WorkflowRunRequest) -> Dict[str, str]:
+    llm_config = _resolve_llm_config(request)
+    headers = {
+        LLM_HEADER_ENABLED: "true" if llm_config.enabled else "false",
+        LLM_HEADER_PROFILE: llm_config.profile,
+    }
+
+    if llm_config.base_url is not None:
+        headers[LLM_HEADER_BASE_URL] = llm_config.base_url
+    if llm_config.model is not None:
+        headers[LLM_HEADER_MODEL] = llm_config.model
+    if llm_config.api_key is not None:
+        headers[LLM_HEADER_API_KEY] = llm_config.api_key.get_secret_value()
+
+    return headers
+
+
 def _ensure_task_directories(task_paths: TaskPaths) -> None:
     """
     创建本任务运行所需的全部目录。
@@ -129,6 +309,7 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
     """
     request = state["request"]
     task_id = generate_global_task_id()
+    llm_config = _resolve_llm_config(request)
 
     # 基于统一路径工厂函数创建任务目录布局，避免散落的字符串拼接逻辑。
     task_paths = build_task_paths(
@@ -144,11 +325,40 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
     origin_input_path = Path(task_paths.origin_dir) / request.input_filename
     origin_input_path.write_text(request.raw_input_text or "", encoding="utf-8")
 
+    parser_analysis, parser_transcript, parser_llm_error = _analyze_request_with_llm(request, llm_config)
+    if parser_transcript is not None:
+        llm_dir = Path(task_paths.shared_task_dir) / "llm"
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        llm_trace_path = llm_dir / "ParserChat_iter0.json"
+        llm_trace_path.write_text(
+            json.dumps(
+                {
+                    "task_id": task_id,
+                    "iteration": 0,
+                    "top_module": request.top_module,
+                    "transcripts": [parser_transcript],
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
     # 进行意图路由；如果调用者显式指定 intent，则优先使用显式值。
-    resolved_intent = request.intent if request.intent is not None else _route_intent(request.raw_input_text)
+    if request.intent is not None:
+        resolved_intent = request.intent
+    elif parser_analysis is not None and parser_analysis.intent is not None:
+        resolved_intent = parser_analysis.intent
+    else:
+        resolved_intent = _route_intent(request.raw_input_text)
 
     # 生成满足 UserTaskSpec 约束的 refined_requirements。
-    refined_requirements = _build_refined_requirements(request)
+    if request.refined_requirements:
+        refined_requirements = request.refined_requirements
+    elif parser_analysis is not None and parser_analysis.refined_requirements:
+        refined_requirements = parser_analysis.refined_requirements
+    else:
+        refined_requirements = _build_refined_requirements(request)
 
     # 结构化规约对象：这是 Parser 阶段的核心产物。
     user_task_spec = UserTaskSpec(
@@ -160,7 +370,8 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
         refined_requirements=refined_requirements,
         workspace_dir=task_paths.shared_task_dir,
         external_target_path=task_paths.result_dir,
-        design_rules=[],
+        target_protocol=parser_analysis.target_protocol if parser_analysis is not None else None,
+        design_rules=parser_analysis.design_rules if parser_analysis is not None else [],
     )
 
     # 1) 将 UserTaskSpec 保存到 Output/TASK_ID/UserTaskSpec.json，方便归档与人工查看。
@@ -187,6 +398,12 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
         shared_task_dir=task_paths.shared_task_dir,
     )
 
+    trace_detail = f"initialized task workspace and persisted origin input to {origin_input_path}"
+    if parser_transcript is not None:
+        trace_detail += "; parser LLM analysis saved to shared_workspace/llm/ParserChat_iter0.json"
+    elif parser_llm_error is not None:
+        trace_detail += "; parser LLM analysis failed, used fallback parser"
+
     return {
         "task": task,
         "task_paths": task_paths,
@@ -197,7 +414,7 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
             WorkflowTraceStep(
                 node="parser_initialize",
                 status="success",
-                detail=f"initialized task workspace and persisted origin input to {origin_input_path}",
+                detail=trace_detail,
                 iteration=0,
             )
         ],
@@ -215,15 +432,27 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     4. 将结果写回工作流状态。
     """
     task = state.get("task")
+    request = state.get("request")
     if task is None:
         raise ValueError("task payload is missing")
+    if request is None:
+        raise ValueError("workflow request is missing")
 
     gen_base_url = os.getenv("GEN_SERVICE_URL", "http://gen:8000")
     endpoint = f"{gen_base_url}/v1/generate"
 
     # 注意：这里只通过控制面传递轻量载荷，不直接传输大段 RTL 文本。
-    with httpx.Client(timeout=15.0) as client:
-        response = client.post(endpoint, json=task.model_dump(mode="json"))
+    # 支持 LLM 生成等慢路径，超时可通过 GEN_SERVICE_TIMEOUT_SECONDS 配置，默认 240 秒
+    try:
+        gen_timeout = float(os.getenv("GEN_SERVICE_TIMEOUT_SECONDS", "240"))
+    except Exception:
+        gen_timeout = 240.0
+    with httpx.Client(timeout=gen_timeout) as client:
+        response = client.post(
+            endpoint,
+            json=task.model_dump(mode="json"),
+            headers=_build_llm_forward_headers(request),
+        )
         response.raise_for_status()
 
     response_payload = response.json()
@@ -257,10 +486,13 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     4. 将 VerifyNodeOutput 写回工作流状态。
     """
     task = state.get("task")
+    request = state.get("request")
     gen_output = state.get("gen_output")
 
     if task is None:
         raise ValueError("task payload is missing")
+    if request is None:
+        raise ValueError("workflow request is missing")
     if gen_output is None:
         raise ValueError("generator output is missing")
 
@@ -274,7 +506,11 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     )
 
     with httpx.Client(timeout=20.0) as client:
-        response = client.post(endpoint, json=verify_payload.model_dump(mode="json"))
+        response = client.post(
+            endpoint,
+            json=verify_payload.model_dump(mode="json"),
+            headers=_build_llm_forward_headers(request),
+        )
         response.raise_for_status()
 
     response_payload = response.json()
@@ -362,7 +598,7 @@ def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
         "trace": [
             WorkflowTraceStep(
                 node="prepare_retry",
-                status="error",
+                status="success",
                 detail=detail,
                 iteration=next_iteration,
             )

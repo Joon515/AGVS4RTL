@@ -1,0 +1,54 @@
+{
+  "task_id": "TASK_20260429T041919Z_729264f2",
+  "iteration": 0,
+  "top_module": "seq_done_parser_llm_todo",
+  "transcripts": [
+    {
+      "request": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an expert Verilog RTL engineer. Generate synthesizable Verilog-2001 only. Return exactly one complete Verilog module and no explanation."
+          },
+          {
+            "role": "user",
+            "content": "Generate RTL that strictly implements this SpecReg contract. Do not change the module name, port names, port directions, or widths. Use active-low asynchronous reset when reset_type is async_low.\n\nUserTaskSpec:\n{\n  \"task_id\": \"TASK_20260429T041919Z_729264f2\",\n  \"iteration\": 0,\n  \"refactor_label\": \"NONE\",\n  \"intent\": \"GEN_ONLY\",\n  \"top_module\": \"seq_done_parser_llm_todo\",\n  \"created_at\": \"2026-04-29T04:19:57.088866Z\",\n  \"source_stage\": null,\n  \"prompt_workspace_path\": \"/app/Output/TASK_20260429T041919Z_729264f2/Origin/request.txt\",\n  \"refined_requirements\": [\n    \"Module seq_done_parser_llm_todo with inputs i_clk, i_rst_n (active-low) and output reg o_done.\",\n    \"Asynchronous active-low reset: o_done <= 0 while i_rst_n is low.\",\n    \"After reset is released (i_rst_n high), o_done must become 1 at the next positive clock edge and stay 1 permanently.\",\n    \"Use always @(posedge i_clk or negedge i_rst_n).\"\n  ],\n  \"workspace_dir\": \"/app/shared_workspace/TASK_20260429T041919Z_729264f2\",\n  \"external_source_path\": null,\n  \"external_target_path\": \"/app/Output/TASK_20260429T041919Z_729264f2/Result\",\n  \"target_protocol\": null,\n  \"design_rules\": [\n    \"Use non-blocking assignment (<=) for sequential logic.\",\n    \"Active-low asynchronous reset.\",\n    \"Positive edge-triggered clock.\"\n  ]\n}\n\nSpecReg:\n{\n  \"task_id\": \"TASK_20260429T041919Z_729264f2\",\n  \"iteration\": 0,\n  \"refactor_label\": \"NONE\",\n  \"intent\": \"GEN_ONLY\",\n  \"top_module\": \"seq_done_parser_llm_todo\",\n  \"created_at\": \"2026-04-29T04:19:57.099484Z\",\n  \"source_stage\": null,\n  \"module_description\": \"Automated SpecReg for seq_done_parser_llm_todo\",\n  \"parameters\": [],\n  \"ports\": [\n    {\n      \"name\": \"i_clk\",\n      \"direction\": \"input\",\n      \"net_type\": \"wire\",\n      \"width\": \"1\",\n      \"clock_domain\": \"i_clk\",\n      \"is_clock\": true,\n      \"is_reset\": false,\n      \"description\": \"Primary clock input\"\n    },\n    {\n      \"name\": \"i_rst_n\",\n      \"direction\": \"input\",\n      \"net_type\": \"wire\",\n      \"width\": \"1\",\n      \"clock_domain\": \"i_clk\",\n      \"is_clock\": false,\n      \"is_reset\": true,\n      \"description\": \"Active-low asynchronous reset\"\n    },\n    {\n      \"name\": \"o_done\",\n      \"direction\": \"output\",\n      \"net_type\": \"wire\",\n      \"width\": \"1\",\n      \"clock_domain\": \"i_clk\",\n      \"is_clock\": false,\n      \"is_reset\": false,\n      \"description\": \"Done flag output\"\n    }\n  ],\n  \"clock_and_reset\": [\n    {\n      \"clock_name\": \"i_clk\",\n      \"reset_name\": \"i_rst_n\",\n      \"reset_type\": \"async_low\"\n    }\n  ],\n  \"protocols\": [],\n  \"verification_directives\": [\n    \"Check reset behavior on i_rst_n\",\n    \"Check that o_done deasserts during reset\",\n    \"Check that o_done asserts after reset is released\"\n  ],\n  \"functional_requirements\": [\n    \"Module seq_done_parser_llm_todo with inputs i_clk, i_rst_n (active-low) and output reg o_done.\",\n    \"Asynchronous active-low reset: o_done <= 0 while i_rst_n is low.\",\n    \"After reset is released (i_rst_n high), o_done must become 1 at the next positive clock edge and stay 1 permanently.\",\n    \"Use always @(posedge i_clk or negedge i_rst_n).\"\n  ],\n  \"corner_cases\": [],\n  \"illegal_conditions\": [],\n  \"latency_notes\": [],\n  \"nodes\": [\n    {\n      \"node_id\": \"seq_done_logic\",\n      \"node_type\": \"sequential\",\n      \"module_name\": null,\n      \"description\": \"Sequential leaf logic that drives o_done with reset-safe behavior\",\n      \"is_leaf\": true\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": {\n        \"node_id\": \"TOP\",\n        \"port_name\": \"i_clk\"\n      },\n      \"target\": {\n        \"node_id\": \"seq_done_logic\",\n        \"port_name\": \"clk\"\n      },\n      \"signal_name\": \"i_clk\",\n      \"width\": \"1\",\n      \"description\": \"Clock connection\"\n    },\n    {\n      \"source\": {\n        \"node_id\": \"TOP\",\n        \"port_name\": \"i_rst_n\"\n      },\n      \"target\": {\n        \"node_id\": \"seq_done_logic\",\n        \"port_name\": \"rst_n\"\n      },\n      \"signal_name\": \"i_rst_n\",\n      \"width\": \"1\",\n      \"description\": \"Reset connection\"\n    },\n    {\n      \"source\": {\n        \"node_id\": \"seq_done_logic\",\n        \"port_name\": \"q\"\n      },\n      \"target\": {\n        \"node_id\": \"TOP\",\n        \"port_name\": \"o_done\"\n      },\n      \"signal_name\": \"o_done\",\n      \"width\": \"1\",\n      \"description\": \"Done output connection\"\n    }\n  ]\n}"
+          }
+        ],
+        "temperature": 0.1,
+        "stream": false
+      },
+      "response": {
+        "id": "debf87e0-b471-4dcf-8d73-a7e5d8a809e4",
+        "object": "chat.completion",
+        "created": 1777436401,
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "```verilog\nmodule seq_done_parser_llm_todo (\n    input wire i_clk,\n    input wire i_rst_n,\n    output reg o_done\n);\n\nalways @(posedge i_clk or negedge i_rst_n) begin\n    if (!i_rst_n)\n        o_done <= 1'b0;\n    else\n        o_done <= 1'b1;\nend\n\nendmodule\n```"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 1351,
+          "completion_tokens": 705,
+          "total_tokens": 2056,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 610
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 1351
+        }
+      },
+      "stage": "coder",
+      "profile": "default",
+      "extracted_rtl": "module seq_done_parser_llm_todo (\n    input wire i_clk,\n    input wire i_rst_n,\n    output reg o_done\n);\n\nalways @(posedge i_clk or negedge i_rst_n) begin\n    if (!i_rst_n)\n        o_done <= 1'b0;\n    else\n        o_done <= 1'b1;\nend\n\nendmodule\n"
+    }
+  ]
+}

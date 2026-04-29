@@ -1,0 +1,40 @@
+{
+  "task_id": "TASK_20260429T045553Z_8163d5df",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "seq_done_compile_retry",
+  "created_at": "2026-04-29T04:55:53.120560Z",
+  "source_stage": "verify",
+  "verdict": "FAIL_COMPILE",
+  "error_details": {
+    "mismatched_ports": [],
+    "compile_errors": [
+      {
+        "file": "/app/shared_workspace/TASK_20260429T045553Z_8163d5df/rtl/seq_done_compile_retry.v",
+        "line": 10,
+        "category": null,
+        "message": "syntax error"
+      },
+      {
+        "file": "/app/shared_workspace/TASK_20260429T045553Z_8163d5df/rtl/seq_done_compile_retry.v",
+        "line": 11,
+        "category": null,
+        "message": "Syntax in assignment statement l-value."
+      },
+      {
+        "file": "/app/shared_workspace/TASK_20260429T045553Z_8163d5df/rtl/seq_done_compile_retry.v",
+        "line": 14,
+        "category": null,
+        "message": "syntax error"
+      }
+    ],
+    "failed_assertions": [],
+    "infra_errors": [],
+    "suggested_fix": "fix Verilog syntax or compile errors before next iteration"
+  },
+  "line_coverage_pct": null,
+  "toggle_coverage_pct": null,
+  "sim_log_path": "/app/shared_workspace/TASK_20260429T045553Z_8163d5df/sim/compile_iter0.log",
+  "wave_file_path": null
+}

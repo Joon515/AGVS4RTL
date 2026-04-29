@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     Field,
     ConfigDict,
+    SecretStr,
     field_validator,
     model_validator,
 )
@@ -705,6 +706,38 @@ class ApiResponse(StrictBaseModel, Generic[T]):
         return _validate_non_empty_str(v, "ApiResponse.message")
 
 
+class LlmRuntimeConfig(StrictBaseModel):
+    enabled: bool = Field(default=False, description="是否为本次工作流启用 LLM")
+    base_url: Optional[str] = Field(default=None, description="OpenAI-compatible LLM base URL")
+    api_key: Optional[SecretStr] = Field(default=None, description="LLM API key; runtime only, never persisted")
+    model: Optional[str] = Field(default=None, description="LLM model name")
+    profile: str = Field(default="default", description="非敏感 LLM 配置 profile 名称")
+
+    @field_validator("base_url", "model", "profile")
+    @classmethod
+    def validate_optional_text(cls, v: Optional[str], info) -> Optional[str]:
+        if info.field_name == "profile" and v is None:
+            raise ValueError("LlmRuntimeConfig.profile cannot be empty")
+        return _validate_optional_non_empty_str(v, f"LlmRuntimeConfig.{info.field_name}")
+
+
+class ParserLlmAnalysis(StrictBaseModel):
+    intent: Optional[IntentCategory] = Field(default=None, description="Parser LLM 判定的任务意图")
+    refined_requirements: List[str] = Field(default_factory=list, description="Parser LLM 提炼后的核心需求列表")
+    target_protocol: Optional[str] = Field(default=None, description="Parser LLM 识别出的目标协议约束")
+    design_rules: List[str] = Field(default_factory=list, description="Parser LLM 提炼出的设计红线约束")
+
+    @field_validator("refined_requirements", "design_rules")
+    @classmethod
+    def validate_text_list(cls, v: List[str], info) -> List[str]:
+        return _validate_non_empty_str_list(v, f"ParserLlmAnalysis.{info.field_name}")
+
+    @field_validator("target_protocol")
+    @classmethod
+    def validate_target_protocol(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "ParserLlmAnalysis.target_protocol")
+
+
 # ==========================================
 # 8. 三服务工作流载荷模型
 # ==========================================
@@ -718,6 +751,7 @@ class WorkflowRunRequest(StrictBaseModel):
     output_root: str = Field(default="/app/Output", description="输出归档根目录，建议绝对路径")
     shared_workspace_root: str = Field(default="/app/shared_workspace", description="共享工作区根目录，建议绝对路径")
     max_iterations: int = Field(default=2, ge=1, le=10, description="最大迭代轮次")
+    llm: Optional[LlmRuntimeConfig] = Field(default=None, description="本次工作流的 LLM 运行时配置；敏感信息不落盘")
 
     @field_validator("top_module")
     @classmethod

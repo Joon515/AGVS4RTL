@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import operator
+import json
 import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
+import httpx
 from langgraph.graph import END, START, StateGraph
 
 from src.common.models import (
     ArtifactSourceStage,
     CompileError,
     ErrorSnapshot,
+    LlmRuntimeConfig,
     PortMismatch,
+    PortDirection,
     SpecReg,
     VerifyNodeOutput,
     VerifyRpt,
@@ -38,6 +42,8 @@ class VerifyWorkflowState(TypedDict):
     - compile_errors: 编译阶段抽取出的结构化错误
     - verify_rpt: 本轮验证报告
     - verify_output: 对外返回的最终输出
+    - llm_config: 本次运行的 LLM 配置，仅运行期使用，不落盘敏感信息
+    - llm_transcripts: Verify 诊断增强的对话记录
     """
     task_payload: VerifyTaskPayload
     iteration: int
@@ -53,14 +59,21 @@ class VerifyWorkflowState(TypedDict):
     compile_errors: Optional[List[CompileError]]
     verify_rpt: Optional[VerifyRpt]
     verify_output: Optional[VerifyNodeOutput]
+    llm_config: Optional[LlmRuntimeConfig]
+    llm_transcripts: Annotated[List[Dict[str, Any]], operator.add]
+
+
+class RtlPortDecl(TypedDict):
+    name: str
+    direction: Optional[PortDirection]
+    width: str
 
 
 def _build_system_messages(task_payload: VerifyTaskPayload) -> List[Dict[str, str]]:
     """
     构造供后续诊断增强使用的上下文消息。
 
-    当前 V1 阶段不实际消费这些 messages，
-    但与 Generator 保持统一骨架，便于后续扩展。
+    与 Generator 保持统一骨架，供诊断增强节点复用。
     """
     task = task_payload.task
 
@@ -76,6 +89,116 @@ Spec file path: {task_payload.spec_file_path}
 RTL path: {task_payload.rtl_path}
 """
     return [{"role": "system", "content": system_prompt}]
+
+
+def _chat_completions_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    return f"{normalized}/chat/completions"
+
+
+def _call_openai_compatible_chat(
+    llm_config: LlmRuntimeConfig,
+    messages: List[Dict[str, str]],
+) -> tuple[str, Dict[str, Any]]:
+    if not llm_config.base_url:
+        raise ValueError("LLM is enabled but base_url is missing")
+    if llm_config.api_key is None:
+        raise ValueError("LLM is enabled but api_key is missing")
+    if not llm_config.model:
+        raise ValueError("LLM is enabled but model is missing")
+
+    payload = {
+        "model": llm_config.model,
+        "messages": messages,
+        "temperature": 0.1,
+        "stream": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
+        "Content-Type": "application/json",
+    }
+
+    with httpx.Client(timeout=120.0) as client:
+        response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
+        response.raise_for_status()
+
+    response_payload = response.json()
+    try:
+        content = response_payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError("LLM response is not OpenAI chat-completions compatible") from exc
+
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("LLM response content is empty")
+
+    sanitized_choices = []
+    for response_choice in response_payload.get("choices", []):
+        if not isinstance(response_choice, dict):
+            continue
+        message = response_choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        sanitized_choices.append(
+            {
+                "index": response_choice.get("index"),
+                "message": {
+                    "role": message.get("role"),
+                    "content": message.get("content"),
+                },
+                "finish_reason": response_choice.get("finish_reason"),
+            }
+        )
+
+    return content.strip(), {
+        "request": {
+            "messages": messages,
+            "temperature": payload["temperature"],
+            "stream": payload["stream"],
+        },
+        "response": {
+            "id": response_payload.get("id"),
+            "object": response_payload.get("object"),
+            "created": response_payload.get("created"),
+            "choices": sanitized_choices,
+            "usage": response_payload.get("usage"),
+        },
+    }
+
+
+def _summarize_rtl_for_prompt(rtl_text: Optional[str], max_chars: int = 6000) -> str:
+    if not rtl_text:
+        return ""
+    if len(rtl_text) <= max_chars:
+        return rtl_text
+    return rtl_text[:max_chars] + "\n... [truncated]"
+
+
+def _build_diagnostic_messages(state: VerifyWorkflowState, verify_rpt: VerifyRpt) -> List[Dict[str, str]]:
+    spec_reg = state.get("spec_reg")
+    rtl_text = state.get("rtl_text")
+    compile_log = ""
+    compile_log_path = state.get("compile_log_path")
+    if compile_log_path is not None and Path(compile_log_path).exists():
+        compile_log = Path(compile_log_path).read_text(encoding="utf-8")[:6000]
+
+    user_content = (
+        "Analyze this deterministic verification failure and provide a concise repair suggestion. "
+        "Do not change the verdict. Focus on what the Generator should fix next.\n\n"
+        f"VerifyRpt:\n{verify_rpt.model_dump_json(indent=2)}\n\n"
+        f"SpecReg:\n{spec_reg.model_dump_json(indent=2) if spec_reg is not None else 'unavailable'}\n\n"
+        f"RTL excerpt:\n{_summarize_rtl_for_prompt(rtl_text)}\n\n"
+        f"Compile log excerpt:\n{compile_log or 'unavailable'}"
+    )
+    return state.get("messages", []) + [{"role": "user", "content": user_content}]
+
+
+def _enhance_report_with_diagnostic(verify_rpt: VerifyRpt, diagnostic: str) -> VerifyRpt:
+    current_fix = verify_rpt.error_details.suggested_fix
+    suggested_fix = diagnostic if not current_fix else f"{current_fix}; LLM diagnostic: {diagnostic}"
+    updated_details = verify_rpt.error_details.model_copy(update={"suggested_fix": suggested_fix})
+    return verify_rpt.model_copy(update={"error_details": updated_details})
 
 
 def _load_spec_reg(spec_file_path: str) -> SpecReg:
@@ -169,6 +292,51 @@ def _extract_declared_port_names(rtl_text: str, top_module: str) -> List[str]:
     return port_names
 
 
+def _normalize_rtl_width(width_range: Optional[str]) -> str:
+    if width_range is None:
+        return "1"
+
+    compact = re.sub(r"\s+", "", width_range)
+    match = re.fullmatch(r"\[(\d+):(\d+)\]", compact)
+    if not match:
+        return compact
+
+    left, right = (int(value) for value in match.groups())
+    return str(abs(left - right) + 1)
+
+
+def _extract_declared_ports(rtl_text: str, top_module: str) -> Dict[str, RtlPortDecl]:
+    block = _extract_module_port_block(rtl_text, top_module)
+    if block is None:
+        return {}
+
+    ports: Dict[str, RtlPortDecl] = {}
+    for raw_item in block.split(","):
+        item = raw_item.strip()
+        if not item:
+            continue
+
+        match = re.match(
+            r"^(?:(input|output|inout)\b)?\s*"
+            r"(?:(wire|reg|logic)\b)?\s*"
+            r"(\[[^\]]+\])?\s*"
+            r"([A-Za-z_][A-Za-z0-9_$]*)$",
+            item,
+        )
+        if not match:
+            continue
+
+        direction_text, _net_type, width_range, name = match.groups()
+        direction = PortDirection(direction_text) if direction_text is not None else None
+        ports[name] = {
+            "name": name,
+            "direction": direction,
+            "width": _normalize_rtl_width(width_range),
+        }
+
+    return ports
+
+
 def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMismatch]:
     """
     执行最小静态契约检查。
@@ -177,6 +345,9 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
     1. RTL 非空
     2. 存在顶层 module <top_module>(...)
     3. SpecReg 中声明的端口在 RTL 顶层端口列表中都可找到
+    4. RTL 顶层端口方向与 SpecReg 一致
+    5. RTL 顶层端口位宽与 SpecReg 一致
+    6. RTL 顶层端口不能包含 SpecReg 未声明的额外端口
 
     注意：
     - 当前 models.py 中 FAIL_SEMANTIC 需要 mismatched_ports 非空。
@@ -204,16 +375,53 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
         )
         return mismatches
 
-    actual_ports = set(_extract_declared_port_names(rtl_text, spec_reg.top_module))
-    expected_ports = [port.name for port in spec_reg.ports]
+    actual_port_decls = _extract_declared_ports(rtl_text, spec_reg.top_module)
+    actual_ports = set(actual_port_decls.keys())
+    expected_ports = {port.name for port in spec_reg.ports}
 
-    for expected_port in expected_ports:
-        if expected_port not in actual_ports:
+    for actual_port_name in sorted(actual_ports - expected_ports):
+        mismatches.append(
+            PortMismatch(
+                expected_port=actual_port_name,
+                actual_port=actual_port_name,
+                detail="unexpected top-level port present in RTL module declaration but absent from SpecReg",
+            )
+        )
+
+    for expected_port in spec_reg.ports:
+        if expected_port.name not in actual_ports:
             mismatches.append(
                 PortMismatch(
-                    expected_port=expected_port,
+                    expected_port=expected_port.name,
                     actual_port=None,
                     detail="expected top-level port missing in RTL module declaration",
+                )
+            )
+            continue
+
+        actual_port = actual_port_decls[expected_port.name]
+        if actual_port["direction"] != expected_port.direction:
+            mismatches.append(
+                PortMismatch(
+                    expected_port=expected_port.name,
+                    actual_port=actual_port["name"],
+                    detail=(
+                        "port direction mismatch: "
+                        f"expected {expected_port.direction.value}, "
+                        f"actual {actual_port['direction'].value if actual_port['direction'] else 'unspecified'}"
+                    ),
+                )
+            )
+
+        if actual_port["width"] != expected_port.width:
+            mismatches.append(
+                PortMismatch(
+                    expected_port=expected_port.name,
+                    actual_port=actual_port["name"],
+                    detail=(
+                        "port width mismatch: "
+                        f"expected {expected_port.width}, actual {actual_port['width']}"
+                    ),
                 )
             )
 
@@ -479,7 +687,6 @@ def semantic_check_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     3. 若存在不匹配，生成 FAIL_SEMANTIC 报告。
 
     后续扩展方向：
-    - 增加方向/位宽核查
     - 增加 clock/reset 端口约束核查
     - 增加 protocol 映射检查
     """
@@ -566,6 +773,49 @@ def compile_check_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     return {"compile_errors": []}
 
 
+def diagnostic_enhance_node(state: VerifyWorkflowState) -> Dict[str, Any]:
+    """
+    节点 4：LLM 诊断增强。
+
+    仅在 Verify 已产生失败报告且本次启用 LLM 时执行。
+    规则化节点仍负责 verdict，LLM 只补充下一轮修复建议与可读诊断。
+    """
+    verify_rpt = state.get("verify_rpt")
+    llm_config = state.get("llm_config")
+
+    if verify_rpt is None or verify_rpt.is_pass():
+        return {}
+    if llm_config is None or not llm_config.enabled:
+        return {}
+
+    try:
+        messages = _build_diagnostic_messages(state, verify_rpt)
+        diagnostic, transcript = _call_openai_compatible_chat(llm_config, messages)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "llm_transcripts": [
+                {
+                    "stage": "verify_diagnostic",
+                    "profile": llm_config.profile,
+                    "error": str(exc),
+                }
+            ],
+        }
+
+    transcript.update(
+        {
+            "stage": "verify_diagnostic",
+            "profile": llm_config.profile,
+            "diagnostic": diagnostic,
+        }
+    )
+
+    return {
+        "verify_rpt": _enhance_report_with_diagnostic(verify_rpt, diagnostic),
+        "llm_transcripts": [transcript],
+    }
+
+
 def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     """
     节点 4：落盘与输出节点。
@@ -581,6 +831,7 @@ def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     """
     verify_rpt = state.get("verify_rpt")
     verify_rpt_path = state.get("verify_rpt_path")
+    llm_transcripts = state.get("llm_transcripts", [])
 
     if verify_rpt_path is None:
         raise ValueError("verify_rpt_path is missing at finalize stage")
@@ -592,6 +843,25 @@ def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
         )
 
     Path(verify_rpt_path).write_text(verify_rpt.model_dump_json(indent=2), encoding="utf-8")
+
+    if llm_transcripts:
+        task = state["task_payload"].task
+        llm_dir = Path(task.shared_task_dir) / "llm"
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        llm_trace_path = llm_dir / f"VerifyChat_iter{task.iteration}.json"
+        llm_trace_path.write_text(
+            json.dumps(
+                {
+                    "task_id": task.task_id,
+                    "iteration": task.iteration,
+                    "top_module": task.top_module,
+                    "transcripts": llm_transcripts,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
     verify_output = VerifyNodeOutput(
         report=verify_rpt,
@@ -626,18 +896,23 @@ def build_verify_workflow_graph():
     graph.add_node("init_context", init_context_node)
     graph.add_node("semantic_check", semantic_check_node)
     graph.add_node("compile_check", compile_check_node)
+    graph.add_node("diagnostic_enhance", diagnostic_enhance_node)
     graph.add_node("finalize", finalize_node)
 
     graph.add_edge(START, "init_context")
     graph.add_edge("init_context", "semantic_check")
     graph.add_edge("semantic_check", "compile_check")
-    graph.add_edge("compile_check", "finalize")
+    graph.add_edge("compile_check", "diagnostic_enhance")
+    graph.add_edge("diagnostic_enhance", "finalize")
     graph.add_edge("finalize", END)
 
     return graph.compile()
 
 
-def run_verify_workflow(payload: VerifyTaskPayload) -> VerifyNodeOutput:
+def run_verify_workflow(
+    payload: VerifyTaskPayload,
+    llm_config: Optional[LlmRuntimeConfig] = None,
+) -> VerifyNodeOutput:
     """
     Verify 工作流统一入口。
 
@@ -661,6 +936,8 @@ def run_verify_workflow(payload: VerifyTaskPayload) -> VerifyNodeOutput:
         "compile_errors": None,
         "verify_rpt": None,
         "verify_output": None,
+        "llm_config": llm_config,
+        "llm_transcripts": [],
     }
 
     final_state = app.invoke(initial_state)
