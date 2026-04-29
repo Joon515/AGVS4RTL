@@ -1,9 +1,26 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 import logging
 
-from src.common.models import ApiResponse, VerifyNodeOutput, VerifyTaskPayload
+from src.common.models import ApiResponse, LlmRuntimeConfig, VerifyNodeOutput, VerifyTaskPayload
 from src.verify.workflow import run_verify_workflow
+
+
+LLM_HEADER_ENABLED = "X-AGVS4RTL-LLM-Enabled"
+LLM_HEADER_BASE_URL = "X-AGVS4RTL-LLM-Base-URL"
+LLM_HEADER_API_KEY = "X-AGVS4RTL-LLM-API-Key"
+LLM_HEADER_MODEL = "X-AGVS4RTL-LLM-Model"
+LLM_HEADER_PROFILE = "X-AGVS4RTL-LLM-Profile"
+
+
+def _load_llm_config_from_headers(request: Request) -> LlmRuntimeConfig:
+    return LlmRuntimeConfig(
+        enabled=request.headers.get(LLM_HEADER_ENABLED, "false").lower() == "true",
+        base_url=request.headers.get(LLM_HEADER_BASE_URL),
+        api_key=request.headers.get(LLM_HEADER_API_KEY),
+        model=request.headers.get(LLM_HEADER_MODEL),
+        profile=request.headers.get(LLM_HEADER_PROFILE, "default"),
+    )
 
 
 class HealthStatus(BaseModel):
@@ -64,7 +81,7 @@ async def root() -> ApiResponse[HealthStatus]:
 
 
 @app.post("/v1/verify", response_model=ApiResponse[VerifyNodeOutput])
-async def stateless_verify(payload: VerifyTaskPayload) -> ApiResponse[VerifyNodeOutput]:
+async def stateless_verify(payload: VerifyTaskPayload, request: Request) -> ApiResponse[VerifyNodeOutput]:
     """
     验证服务主入口。
 
@@ -81,16 +98,20 @@ async def stateless_verify(payload: VerifyTaskPayload) -> ApiResponse[VerifyNode
     - 服务本身不返回大段日志文本，而是将验证报告和编译日志落盘到 SharedWorkspace 后返回结构化结果。
     """
     try:
+        llm_config = _load_llm_config_from_headers(request)
         logger.info(
-            "收到验证请求: task_id=%s, iteration=%s, top_module=%s, spec_file_path=%s, rtl_path=%s",
+            "收到验证请求: task_id=%s, iteration=%s, top_module=%s, spec_file_path=%s, rtl_path=%s, llm_enabled=%s, llm_profile=%s, llm_model=%s",
             payload.task.task_id,
             payload.task.iteration,
             payload.task.top_module,
             payload.spec_file_path,
             payload.rtl_path,
+            llm_config.enabled,
+            llm_config.profile,
+            llm_config.model,
         )
 
-        verify_output = run_verify_workflow(payload)
+        verify_output = run_verify_workflow(payload, llm_config=llm_config)
 
         logger.info(
             "验证完成: task_id=%s, iteration=%s, verdict=%s",

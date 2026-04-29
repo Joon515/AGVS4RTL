@@ -118,6 +118,11 @@
 # 2026-04-29
 
 - 完成 retry 修复闭环的最小验收实现：Parser 已可稳定执行 `parser_initialize -> gen_stateless -> verify_stateless -> prepare_retry -> gen_stateless -> verify_stateless -> archive_success`。
+- 复跑宿主机端到端脚本 `test_host_workflow.py`，覆盖 PASS、FAIL_SEMANTIC retry、FAIL_COMPILE retry、INFRA_ERROR 非重试归档、端口方向 retry、端口位宽 retry，Parser + Generator + Verify 闭环全部通过。
+- 新增 Verify-only 故障注入脚本 `test_verify_only_faults.py`：通过宿主机复制生成 SpecReg/RTL，再分别改坏缺端口、端口方向、端口位宽与 Verilog 语法，直接经容器内网络调用 `verify:8000/v1/verify` 验证 PASS、FAIL_SEMANTIC、FAIL_COMPILE verdict 分支。
+- Verify-only 脚本执行通过，产物保留在 `shared_workspace/TASK_VERIFY_ONLY_*`，可用于后续手工检查 VerifyRpt 与 compile log。
+- 补全 Parser 侧 LLM TODO：在启用 LLM 时优先调用 OpenAI-compatible Chat Completions 生成结构化 `ParserLlmAnalysis`，用于 intent 分类、需求提炼、协议约束与设计红线识别；模型失败或返回不可校验内容时自动回退原关键词路由与原始需求兜底。
+- Parser LLM 对话同步输出到 `shared_workspace/TASK_ID/llm/ParserChat_iter0.json`，归档后位于 `Output/TASK_ID/Result/shared_workspace/llm/`；记录采用白名单字段，不保存 API key、base URL 或 runtime model。
 - 将 `prepare_retry` 轨迹状态从 `error` 调整为 `success`，明确其语义为“已成功准备下一轮生成”，避免测试与后续可观测性把可恢复失败误判为节点执行失败。
 - 为 Generator 增加轻量失败注入钩子，用于验收闭环而不改跨服务协议：`AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE` 会在第 0 轮生成缺失 `o_done` 端口的 RTL，第 1 轮恢复到保守正确模板；同时预留 `AGVS4RTL_INJECT_FAIL_COMPILE_ONCE` 用于后续编译失败闭环测试。
 - Generator 在重试轮次成功读取上一轮 `VerifyRpt_iterN.json` 后，会在 `GenNodeOutput.summary` 中记录上一轮 verdict，便于宿主机测试确认 `prepare_retry -> gen_stateless` 确实消费了上一轮验证报告。
@@ -145,3 +150,29 @@
 - `FAIL_SEMANTIC` 现在可明确报告端口方向错误与端口位宽错误，例如 `port direction mismatch: expected output, actual input`、`port width mismatch: expected 1, actual 2`。
 - Generator 增加 `AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE` 与 `AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE` 两个验收钩子，用于稳定触发静态契约细节失败并验证 retry 修复路径。
 - `test_host_workflow.py` 扩展为六条宿主机端到端路径：普通 PASS 主路径、`FAIL_SEMANTIC -> retry -> PASS`、`FAIL_COMPILE -> retry -> PASS`、`INFRA_ERROR -> archive_failed`、端口方向 mismatch retry、端口位宽 mismatch retry。
+
+# 2026-04-29 v5
+
+- Parser → Generator 超时支持 `GEN_SERVICE_TIMEOUT_SECONDS` 环境变量，默认 240 秒，适配真实 LLM 生成慢路径。
+
+- 新增 LLM 运行时配置接口骨架：`WorkflowRunRequest.llm` 支持 `enabled`、`base_url`、`api_key`、`model`、`profile`，用于后续由 Parser 统一接入 LLM 配置。
+- Parser 支持从请求体或环境变量 `AGVS4RTL_LLM_*` 读取 LLM 配置，并通过内部请求头转发给 Generator；API key 不写入 UserTaskSpec、trace、Output 或 shared_workspace。
+- Generator 主入口已能解析 Parser 转发的 LLM 运行时配置，并仅记录 `enabled/profile/model` 等非敏感信息；Coder 节点在 LLM 启用时通过 OpenAI-compatible `/chat/completions` 生成 Verilog RTL。
+- Generator 在 LLM Coder 路径下同步输出对话记录到 `shared_workspace/TASK_ID/llm/CoderChat_iterN.json`，包含 messages、非敏感请求参数、模型返回内容与 usage 信息；不写入 API key、base URL 或 runtime model。
+- 新增 `.env.example` 与 `.gitignore`，用于本地填写 baseURL/API key，同时避免真实 `.env` 被提交。
+- Architect 节点暂时保持规则化 SpecReg 生成，确保 `SpecReg` 契约稳定；包含 `AGVS4RTL_INJECT_*` 的验收任务继续使用规则 RTL 生成，以保留 retry/静态契约测试钩子。
+
+# 2026-04-29 v6
+
+- 接入 Verify 侧 LLM 诊断增强：Parser 调用 Verify 时同步转发 `X-AGVS4RTL-LLM-*` 运行时请求头，Verify API 解析为 `LlmRuntimeConfig` 后传入内部 LangGraph workflow。
+- Verify workflow 新增 `diagnostic_enhance` 节点，执行路径更新为 `init_context -> semantic_check -> compile_check -> diagnostic_enhance -> finalize`；该节点仅在确定性检查已经产出失败 verdict 且 LLM 启用时运行。
+- Verify LLM 只补充失败报告的修复建议和可读诊断，不决定 `PASS` / `FAIL` / `INFRA_ERROR`；LLM 调用失败时保持原 `VerifyRpt` 不变，并仅记录诊断不可用的 transcript。
+- Verify 诊断对话落盘到 `shared_workspace/TASK_ID/llm/VerifyChat_iterN.json`，归档后随 Parser / Generator 的 LLM transcript 一起进入 `Output/TASK_ID/.../shared_workspace/llm/`；记录不包含 API key、base URL 或 runtime model。
+
+# 2026-04-29 v7
+
+- 同步补充 Parser / Generator LLM 接入说明：README 明确请求体 `llm` 配置优先于 `AGVS4RTL_LLM_*` 环境变量，Parser 负责统一解析运行时配置并通过 `X-AGVS4RTL-LLM-*` 内部请求头转发给 Generator / Verify。
+- 文档补清 Parser LLM 行为边界：启用后优先生成结构化 `ParserLlmAnalysis`，用于 intent、需求、目标协议与设计规则识别；显式请求字段优先保留，LLM 失败或返回不可校验内容时回退关键词路由与原始需求兜底。
+- 文档补清 Generator Coder LLM 路径：Generator API 解析 Parser 转发的运行时配置后传入内部 workflow，Coder 节点在启用 LLM 且不含 `AGVS4RTL_INJECT_*` 验收钩子时生成 Verilog；retry 轮次会把上一轮 `SpecReg` 与 `VerifyRpt` 注入提示词。
+- 文档补清 transcript 与安全边界：`ParserChat_iter0.json`、`CoderChat_iterN.json`、`VerifyChat_iterN.json` 均落在 `shared_workspace/TASK_ID/llm/`，记录 messages、非敏感请求参数、响应内容与错误摘要，不持久化 API key、base URL 或 runtime model。
+- 语法检查：使用 `PYTHONPYCACHEPREFIX=/tmp/agvs4rtl_pycache /usr/bin/python3 -m py_compile src/common/models.py src/parser/workflow.py src/generator/workflow.py src/verify/workflow.py src/parser/main.py src/generator/main.py src/verify/main.py test_host_workflow.py` 通过。导入级烟测暂未执行，当前宿主机系统 Python 与工作区 `.venv` 均缺少 `pydantic` 等运行依赖。

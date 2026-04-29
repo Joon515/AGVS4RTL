@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import operator
+import json
+import re
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
+import httpx
 from langgraph.graph import END, START, StateGraph
 
 from src.common.models import (
     ClockResetDef,
     EndpointRef,
     GenNodeOutput,
+    LlmRuntimeConfig,
     NodeType,
     PortDef,
     PortDirection,
@@ -47,6 +51,8 @@ class GenWorkflowState(TypedDict):
     spec_reg: Optional[SpecReg]
     rtl_code: Optional[str]
     gen_output: Optional[GenNodeOutput]
+    llm_config: Optional[LlmRuntimeConfig]
+    llm_transcripts: Annotated[List[Dict[str, Any]], operator.add]
 
 
 def _load_user_task_spec(task: WorkTaskPayload) -> UserTaskSpec:
@@ -394,6 +400,147 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
     )
 
 
+def _has_injection_directive(spec_reg: SpecReg) -> bool:
+    requirements_text = "\n".join(spec_reg.functional_requirements)
+    return "AGVS4RTL_INJECT_" in requirements_text
+
+
+def _chat_completions_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    return f"{normalized}/chat/completions"
+
+
+def _extract_verilog_code(content: str) -> str:
+    fence_match = re.search(r"```(?:systemverilog|verilog|sv)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
+    if fence_match is not None:
+        content = fence_match.group(1)
+
+    content = content.strip()
+    module_index = content.find("module ")
+    endmodule_index = content.rfind("endmodule")
+
+    if module_index >= 0 and endmodule_index >= module_index:
+        content = content[module_index:endmodule_index + len("endmodule")]
+
+    if not content.startswith("module ") or "endmodule" not in content:
+        raise ValueError("LLM response does not contain a complete Verilog module")
+
+    return content.rstrip() + "\n"
+
+
+def _call_openai_compatible_chat(
+    llm_config: LlmRuntimeConfig,
+    messages: List[Dict[str, str]],
+) -> tuple[str, Dict[str, Any]]:
+    if not llm_config.base_url:
+        raise ValueError("LLM is enabled but base_url is missing")
+    if llm_config.api_key is None:
+        raise ValueError("LLM is enabled but api_key is missing")
+    if not llm_config.model:
+        raise ValueError("LLM is enabled but model is missing")
+
+    payload = {
+        "model": llm_config.model,
+        "messages": messages,
+        "temperature": 0.1,
+        "stream": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
+        "Content-Type": "application/json",
+    }
+
+    with httpx.Client(timeout=120.0) as client:
+        response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
+        response.raise_for_status()
+
+    response_payload = response.json()
+    try:
+        content = response_payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError("LLM response is not OpenAI chat-completions compatible") from exc
+
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("LLM response content is empty")
+
+    sanitized_choices = []
+    for response_choice in response_payload.get("choices", []):
+        if not isinstance(response_choice, dict):
+            continue
+        message = response_choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        sanitized_choices.append(
+            {
+                "index": response_choice.get("index"),
+                "message": {
+                    "role": message.get("role"),
+                    "content": message.get("content"),
+                },
+                "finish_reason": response_choice.get("finish_reason"),
+            }
+        )
+
+    return content, {
+        "request": {
+            "messages": messages,
+            "temperature": payload["temperature"],
+            "stream": payload["stream"],
+        },
+        "response": {
+            "id": response_payload.get("id"),
+            "object": response_payload.get("object"),
+            "created": response_payload.get("created"),
+            "choices": sanitized_choices,
+            "usage": response_payload.get("usage"),
+        },
+    }
+
+
+def _emit_verilog_with_llm(
+    spec_reg: SpecReg,
+    user_task_spec: UserTaskSpec,
+    verify_rpt: Optional[VerifyRpt],
+    llm_config: LlmRuntimeConfig,
+) -> tuple[str, Dict[str, Any]]:
+    retry_context = ""
+    if verify_rpt is not None:
+        retry_context = "\nPrevious verification report:\n" + verify_rpt.model_dump_json(indent=2)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert Verilog RTL engineer. Generate synthesizable Verilog-2001 only. "
+                "Return exactly one complete Verilog module and no explanation."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Generate RTL that strictly implements this SpecReg contract. "
+                "Do not change the module name, port names, port directions, or widths. "
+                "Use active-low asynchronous reset when reset_type is async_low.\n\n"
+                f"UserTaskSpec:\n{user_task_spec.model_dump_json(indent=2)}\n\n"
+                f"SpecReg:\n{spec_reg.model_dump_json(indent=2)}"
+                f"{retry_context}"
+            ),
+        },
+    ]
+
+    content, transcript = _call_openai_compatible_chat(llm_config, messages)
+    transcript.update(
+        {
+            "stage": "coder",
+            "profile": llm_config.profile,
+            "extracted_rtl": _extract_verilog_code(content),
+        }
+    )
+    return transcript["extracted_rtl"], transcript
+
+
 def init_context_node(state: GenWorkflowState) -> Dict[str, Any]:
     """
     节点 1：上下文初始化。
@@ -476,10 +623,25 @@ def coder_node(state: GenWorkflowState) -> Dict[str, Any]:
     - 再对生成结果做静态格式化与必要的语法保护。
     """
     spec_reg = state.get("spec_reg")
+    user_task_spec = state.get("user_task_spec")
+    verify_rpt = state.get("verify_rpt")
+    llm_config = state.get("llm_config")
     if spec_reg is None:
         raise ValueError("spec_reg is missing")
+    if user_task_spec is None:
+        raise ValueError("user_task_spec is missing")
 
-    rtl_code = _emit_verilog_from_spec(spec_reg)
+    if llm_config is not None and llm_config.enabled and not _has_injection_directive(spec_reg):
+        rtl_code, llm_transcript = _emit_verilog_with_llm(
+            spec_reg=spec_reg,
+            user_task_spec=user_task_spec,
+            verify_rpt=verify_rpt,
+            llm_config=llm_config,
+        )
+        return {"rtl_code": rtl_code, "llm_transcripts": [llm_transcript]}
+    else:
+        rtl_code = _emit_verilog_from_spec(spec_reg)
+
     return {"rtl_code": rtl_code}
 
 
@@ -499,6 +661,7 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     task = state["task"]
     spec_reg = state.get("spec_reg")
     rtl_code = state.get("rtl_code")
+    llm_transcripts = state.get("llm_transcripts", [])
 
     if spec_reg is None:
         raise ValueError("spec_reg is missing at finalize stage")
@@ -509,6 +672,7 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     shared_task_dir = Path(task.shared_task_dir)
     specs_dir = shared_task_dir / "specs"
     rtl_dir = shared_task_dir / "rtl"
+    llm_dir = shared_task_dir / "llm"
 
     specs_dir.mkdir(parents=True, exist_ok=True)
     rtl_dir.mkdir(parents=True, exist_ok=True)
@@ -520,6 +684,23 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     rtl_path.write_text(rtl_code, encoding="utf-8")
     if task.iteration == 0 and "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE" in requirements_text:
         rtl_path.unlink()
+
+    if llm_transcripts:
+        llm_dir.mkdir(parents=True, exist_ok=True)
+        llm_trace_path = llm_dir / f"CoderChat_iter{task.iteration}.json"
+        llm_trace_path.write_text(
+            json.dumps(
+                {
+                    "task_id": task.task_id,
+                    "iteration": task.iteration,
+                    "top_module": task.top_module,
+                    "transcripts": llm_transcripts,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
     verify_rpt = state.get("verify_rpt")
     summary = f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}"
@@ -568,7 +749,7 @@ def build_gen_workflow_graph():
     return graph.compile()
 
 
-def run_gen_workflow(payload: WorkTaskPayload) -> GenNodeOutput:
+def run_gen_workflow(payload: WorkTaskPayload, llm_config: Optional[LlmRuntimeConfig] = None) -> GenNodeOutput:
     """
     Generator 工作流统一入口。
 
@@ -590,6 +771,8 @@ def run_gen_workflow(payload: WorkTaskPayload) -> GenNodeOutput:
         "spec_reg": None,
         "rtl_code": None,
         "gen_output": None,
+        "llm_config": llm_config,
+        "llm_transcripts": [],
     }
 
     final_state = app.invoke(initial_state)

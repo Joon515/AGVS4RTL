@@ -1,0 +1,20 @@
+{
+  "task_id": "TASK_20260429T045553Z_072997bb",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "seq_done_retry",
+  "created_at": "2026-04-29T04:55:53.022189Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260429T045553Z_072997bb/Origin/request.txt",
+  "refined_requirements": [
+    "reset to 0",
+    "otherwise 1",
+    "AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE"
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260429T045553Z_072997bb",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260429T045553Z_072997bb/Result",
+  "target_protocol": null,
+  "design_rules": []
+}

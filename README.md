@@ -83,3 +83,50 @@ AGVS4RTL/
 7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。
 
 8. 已完成 retry 修复闭环、非重试失败归档与静态契约细节的最小验收：通过宿主机脚本覆盖普通 PASS 主路径、`FAIL_SEMANTIC -> prepare_retry -> PASS`、`FAIL_COMPILE -> prepare_retry -> PASS`、`INFRA_ERROR -> archive_failed`、端口方向 mismatch retry 与端口位宽 mismatch retry 场景。当前 Parser 可稳定执行可重试失败的二轮修复路径，并对不可重试基础设施错误直接进入失败归档。
+
+9. 已补入 LLM 运行时配置与三服务接入路径：Parser 可通过请求体 `llm` 字段或环境变量读取 `enabled`、`base_url`、`api_key`、`model`、`profile`，并通过内部请求头转发给 Generator / Verify。Parser 在启用 LLM 时优先做 intent 分类、需求提炼、协议约束与设计红线识别；Generator 的 Coder 节点可调用同一 OpenAI-compatible Chat Completions 配置生成 RTL，并在 retry 轮次携带上一轮 `SpecReg` / `VerifyRpt` 上下文；Verify 仅把 LLM 用于失败诊断增强，不改变确定性 verdict。API key 仅作为运行时信息传递，不写入 `UserTaskSpec`、trace、`Output/` 或 `shared_workspace/`。
+
+### LLM 接口配置
+
+本地开发可复制 `.env.example` 为 `.env` 后填写真实配置。`.env` 已被 `.gitignore` 排除，不应提交真实 API key。
+
+```bash
+AGVS4RTL_LLM_ENABLED=true
+AGVS4RTL_LLM_BASE_URL=https://example.com/v1
+AGVS4RTL_LLM_API_KEY=your-api-key
+AGVS4RTL_LLM_MODEL=your-model
+AGVS4RTL_LLM_PROFILE=default
+```
+
+也可以在调用 Parser 时传入非持久化运行时配置：
+
+```json
+{
+	"top_module": "seq_done_logic",
+	"raw_input_text": "Generate a simple sequential done logic module",
+	"max_iterations": 2,
+	"llm": {
+		"enabled": true,
+		"base_url": "https://example.com/v1",
+		"api_key": "your-api-key",
+		"model": "your-model",
+		"profile": "default"
+	}
+}
+```
+
+#### Parser → Generator 超时配置
+
+Parser 调用 Generator 默认超时 240 秒（环境变量 `GEN_SERVICE_TIMEOUT_SECONDS`），适配真实 LLM 生成慢路径。可通过 compose/env 配置。
+
+当前阶段已接入 OpenAI-compatible Chat Completions 接口，`base_url` 可以填写服务根路径（如 `https://example.com/v1`）或完整 `/chat/completions` 路径。请求体 `llm` 配置优先级高于环境变量；当 `enabled=false` 或配置缺失时，系统保持规则化路径运行。
+
+#### Parser / Generator 接入行为
+
+Parser 是 LLM 配置入口与跨服务转发点。启用 LLM 后，Parser 会先调用 Parser LLM 生成结构化 `ParserLlmAnalysis`，用于 intent 分类、需求提炼、目标协议和设计规则识别；如果请求体已经显式给出 `intent` 或 `refined_requirements`，这些显式字段仍优先保留。Parser LLM 调用失败、返回空内容或返回内容无法通过模型校验时，会自动回退到关键词路由和原始需求兜底，不中断主流程。Parser LLM 对话记录落盘到 `shared_workspace/TASK_ID/llm/ParserChat_iter0.json`，仅包含 messages、非敏感请求参数、响应内容和错误摘要。
+
+Parser 调用 Generator / Verify 时，会通过 `X-AGVS4RTL-LLM-*` 内部请求头转发运行时配置。Generator API 解析这些请求头后传入内部 LangGraph workflow；Coder 节点只有在 LLM 启用且任务中不含 `AGVS4RTL_INJECT_*` 验收钩子时才调用模型生成 Verilog。retry 轮次会把上一轮 `SpecReg` 与 `VerifyRpt` 加入提示词，使 Coder 能看到失败 verdict、错误详情和上一轮结构化规约。Generator LLM 对话记录落盘到 `shared_workspace/TASK_ID/llm/CoderChat_iterN.json`；Architect 节点仍保持规则化 `SpecReg` 生成，避免跨服务契约随模型输出漂移。
+
+#### Verify 诊断边界
+
+Verify 在规则化静态契约检查或编译检查产出失败 verdict 后，才会调用同一运行时 LLM 配置补充诊断建议。PASS / FAIL / INFRA_ERROR 的裁判仍由 Verify 的确定性节点负责；LLM 调用失败只记录诊断不可用的 transcript，不会改变 `VerifyRpt.verdict`、`error_details` 或 retry 语义。Verify 对话记录落盘到 `shared_workspace/TASK_ID/llm/VerifyChat_iterN.json`。

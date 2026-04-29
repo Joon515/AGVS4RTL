@@ -1,0 +1,19 @@
+{
+  "task_id": "TASK_20260429T030643Z_939354e4",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "seq_done_real_llm_debug",
+  "created_at": "2026-04-29T03:06:43.715029Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260429T030643Z_939354e4/Origin/request.txt",
+  "refined_requirements": [
+    "reset o_done to 0",
+    "assert o_done to 1 after reset is released"
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260429T030643Z_939354e4",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260429T030643Z_939354e4/Result",
+  "target_protocol": null,
+  "design_rules": []
+}
