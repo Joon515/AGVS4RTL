@@ -347,6 +347,7 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
     3. SpecReg 中声明的端口在 RTL 顶层端口列表中都可找到
     4. RTL 顶层端口方向与 SpecReg 一致
     5. RTL 顶层端口位宽与 SpecReg 一致
+    6. RTL 顶层端口不能包含 SpecReg 未声明的额外端口
 
     注意：
     - 当前 models.py 中 FAIL_SEMANTIC 需要 mismatched_ports 非空。
@@ -376,6 +377,16 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
 
     actual_port_decls = _extract_declared_ports(rtl_text, spec_reg.top_module)
     actual_ports = set(actual_port_decls.keys())
+    expected_ports = {port.name for port in spec_reg.ports}
+
+    for actual_port_name in sorted(actual_ports - expected_ports):
+        mismatches.append(
+            PortMismatch(
+                expected_port=actual_port_name,
+                actual_port=actual_port_name,
+                detail="unexpected top-level port present in RTL module declaration but absent from SpecReg",
+            )
+        )
 
     for expected_port in spec_reg.ports:
         if expected_port.name not in actual_ports:

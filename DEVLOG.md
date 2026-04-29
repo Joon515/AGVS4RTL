@@ -176,3 +176,17 @@
 - 文档补清 Generator Coder LLM 路径：Generator API 解析 Parser 转发的运行时配置后传入内部 workflow，Coder 节点在启用 LLM 且不含 `AGVS4RTL_INJECT_*` 验收钩子时生成 Verilog；retry 轮次会把上一轮 `SpecReg` 与 `VerifyRpt` 注入提示词。
 - 文档补清 transcript 与安全边界：`ParserChat_iter0.json`、`CoderChat_iterN.json`、`VerifyChat_iterN.json` 均落在 `shared_workspace/TASK_ID/llm/`，记录 messages、非敏感请求参数、响应内容与错误摘要，不持久化 API key、base URL 或 runtime model。
 - 语法检查：使用 `PYTHONPYCACHEPREFIX=/tmp/agvs4rtl_pycache /usr/bin/python3 -m py_compile src/common/models.py src/parser/workflow.py src/generator/workflow.py src/verify/workflow.py src/parser/main.py src/generator/main.py src/verify/main.py test_host_workflow.py` 通过。导入级烟测暂未执行，当前宿主机系统 Python 与工作区 `.venv` 均缺少 `pydantic` 等运行依赖。
+
+# 2026-04-29 v8
+
+- 按阶段产物契约收敛 Generator / Verify 职责：Parser 维护 `UserTaskSpec`，Generator Architect 维护 `SpecReg`，Generator Coder 依据 `SpecReg` 生成 RTL，Verify 维护 `VerifyRpt` 并驱动回溯建议。
+- Generator Architect 新增 LLM `SpecReg` 生成路径：启用 LLM 且任务不含 `AGVS4RTL_INJECT_*` 时，Architect 调用 OpenAI-compatible Chat Completions 生成完整 `SpecReg` JSON，并通过 `SpecReg.model_validate(...)` 强校验；失败时记录 Architect transcript 并回退到规则化 SpecReg，保持服务可用。
+- Architect LLM 校验前增加轻量 schema 规范化：把字符串型 `latency_notes` 等文本字段规整为列表，兼容模型常见的 `nodes.name/type` 写法，并丢弃不完整的自由形态 `edges`，避免真实端口契约因辅助图字段形状偏差整体回退到 dummy。
+- 收紧 Architect prompt：明确文本字段数组、`nodes` 字段名、组合逻辑默认 `nodes=[]/edges=[]`，减少模型输出和 `SpecReg` schema 的偏差。
+- Generator LLM transcript 按阶段拆分落盘：Architect 对话写入 `shared_workspace/TASK_ID/llm/ArchitectChat_iterN.json`，Coder 对话写入 `shared_workspace/TASK_ID/llm/CoderChat_iterN.json`，继续避免持久化 API key、base URL 或 runtime model。
+- Verify 静态契约核查从“SpecReg 端口必须存在于 RTL”收紧为“RTL 顶层端口集合必须与 SpecReg.ports 严格一致”，额外端口也会产出 `FAIL_SEMANTIC`，避免 UserTaskSpec 与 SpecReg 错位时混合 RTL 静默 PASS。
+- 扩展 `test_verify_only_faults.py`，新增 extra-port Verify-only 故障注入场景，覆盖额外顶层端口进入 `FAIL_SEMANTIC` 的判定。
+- README 同步补充阶段产物契约、Architect LLM 行为边界、阶段化 transcript 路径与 Verify 严格端口契约说明。
+- 验证结果：`py_compile` 通过关键 Python 文件；`test_verify_only_faults.py` 通过 pass/missing_port/direction_mismatch/width_mismatch/extra_port/compile_error；`.venv-1/bin/python test_host_workflow.py` 通过规则路径全闭环。
+- ALU live smoke：`TASK_20260429T064209Z_288ff077` 通过 Parser -> Gen -> Verify -> archive_success。Architect `SpecReg_iter0.json` 已生成真实 ALU 端口 `a/b/op/result/zero`，无 clock/reset/done dummy；Coder RTL 与端口契约一致，VerifyRpt 为 `PASS`。
+- 新增 `test_fuzzy_requirement_workflow.py`：覆盖“仅输入模糊自然语言、不提供精确端口/opcode 列表”的 LLM smoke，断言 Parser / Architect transcript 落盘、`UserTaskSpec` 保留 8 位约束、`SpecReg` 推导出 8 位输入输出且未回退到默认 `i_clk/i_rst_n/o_done` dummy 契约。

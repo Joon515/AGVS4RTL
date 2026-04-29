@@ -10,6 +10,7 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 
 from src.common.models import (
+    ArtifactSourceStage,
     ClockResetDef,
     EndpointRef,
     GenNodeOutput,
@@ -284,6 +285,7 @@ def _build_dummy_spec_reg(
         iteration=task.iteration,
         intent=task.intent,
         top_module=task.top_module,
+        source_stage=ArtifactSourceStage.ARCHITECT,
         module_description=module_description,
         verification_directives=[
             "Check reset behavior on i_rst_n",
@@ -405,6 +407,16 @@ def _has_injection_directive(spec_reg: SpecReg) -> bool:
     return "AGVS4RTL_INJECT_" in requirements_text
 
 
+def _has_injection_in_user_task_spec(user_task_spec: UserTaskSpec) -> bool:
+    request_text = "\n".join(
+        [
+            *user_task_spec.refined_requirements,
+            *user_task_spec.design_rules,
+        ]
+    )
+    return "AGVS4RTL_INJECT_" in request_text
+
+
 def _chat_completions_url(base_url: str) -> str:
     normalized = base_url.rstrip("/")
     if normalized.endswith("/chat/completions"):
@@ -428,6 +440,91 @@ def _extract_verilog_code(content: str) -> str:
         raise ValueError("LLM response does not contain a complete Verilog module")
 
     return content.rstrip() + "\n"
+
+
+def _extract_json_object(content: str) -> Dict[str, Any]:
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
+    if fence_match is not None:
+        content = fence_match.group(1)
+
+    content = content.strip()
+    start = content.find("{")
+    end = content.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("LLM architect response does not contain a JSON object")
+
+    parsed = json.loads(content[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM architect response JSON is not an object")
+    return parsed
+
+
+def _ensure_text_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(spec_payload)
+
+    for field_name in [
+        "verification_directives",
+        "functional_requirements",
+        "corner_cases",
+        "illegal_conditions",
+        "latency_notes",
+    ]:
+        normalized[field_name] = _ensure_text_list(normalized.get(field_name))
+
+    normalized.setdefault("parameters", [])
+    normalized.setdefault("ports", [])
+    normalized.setdefault("clock_and_reset", [])
+    normalized.setdefault("protocols", [])
+
+    normalized_nodes = []
+    for node in normalized.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("node_id") or node.get("name") or node.get("id")
+        if not node_id:
+            continue
+        node_type = node.get("node_type") or node.get("type") or "combinational"
+        normalized_nodes.append(
+            {
+                "node_id": node_id,
+                "node_type": node_type,
+                "module_name": node.get("module_name"),
+                "description": node.get("description", ""),
+                "is_leaf": node.get("is_leaf", node_type in {"combinational", "sequential"}),
+            }
+        )
+    normalized["nodes"] = normalized_nodes
+
+    normalized_edges = []
+    for edge in normalized.get("edges") or []:
+        if not isinstance(edge, dict):
+            continue
+        source = edge.get("source")
+        target = edge.get("target")
+        if not isinstance(source, dict) or not isinstance(target, dict):
+            continue
+        if "node_id" not in source or "port_name" not in source:
+            continue
+        if "node_id" not in target or "port_name" not in target:
+            continue
+        signal_name = edge.get("signal_name")
+        if not signal_name:
+            continue
+        normalized_edges.append(edge)
+    normalized["edges"] = normalized_edges
+
+    return normalized
 
 
 def _call_openai_compatible_chat(
@@ -541,6 +638,78 @@ def _emit_verilog_with_llm(
     return transcript["extracted_rtl"], transcript
 
 
+def _build_spec_reg_with_llm(
+    task: WorkTaskPayload,
+    user_task_spec: UserTaskSpec,
+    previous_spec_reg: Optional[SpecReg],
+    verify_rpt: Optional[VerifyRpt],
+    llm_config: LlmRuntimeConfig,
+) -> tuple[SpecReg, Dict[str, Any]]:
+    previous_context = ""
+    if previous_spec_reg is not None:
+        previous_context += "\nPrevious SpecReg:\n" + previous_spec_reg.model_dump_json(indent=2)
+    if verify_rpt is not None:
+        previous_context += "\nPrevious VerifyRpt:\n" + verify_rpt.model_dump_json(indent=2)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the Architect node in an RTL generation workflow. "
+                "Return JSON only for a complete SpecReg object. "
+                "The JSON must match these top-level fields: task_id, iteration, refactor_label, "
+                "intent, top_module, source_stage, module_description, parameters, ports, "
+                "clock_and_reset, protocols, verification_directives, functional_requirements, "
+                "corner_cases, illegal_conditions, latency_notes, nodes, edges. "
+                "Use source_stage=architect. For combinational designs, clock_and_reset can be an empty list. "
+                "Use width as a decimal bit count string such as '1', '3', or '8'. "
+                "Use port directions input, output, or inout, and net types wire, reg, or logic. "
+                "verification_directives, functional_requirements, corner_cases, illegal_conditions, "
+                "and latency_notes must be arrays of strings. "
+                "nodes must use node_id, node_type, module_name, description, and is_leaf. "
+                "For flat combinational designs, use nodes=[] and edges=[]. "
+                "Only include edges when source and target are EndpointRef objects with node_id and port_name."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Generate the authoritative SpecReg contract for this task. "
+                "The Coder will be required to implement this SpecReg exactly, so include the real top-level ports "
+                "and functional intent from UserTaskSpec. Do not invent placeholder clock/reset/done ports unless "
+                "the user requirements explicitly ask for them.\n\n"
+                f"Task metadata:\n{task.model_dump_json(indent=2)}\n\n"
+                f"UserTaskSpec:\n{user_task_spec.model_dump_json(indent=2)}"
+                f"{previous_context}"
+            ),
+        },
+    ]
+
+    content, transcript = _call_openai_compatible_chat(llm_config, messages)
+    spec_payload = _normalize_architect_spec_payload(_extract_json_object(content))
+    spec_payload.update(
+        {
+            "task_id": task.task_id,
+            "iteration": task.iteration,
+            "intent": task.intent.value,
+            "top_module": task.top_module,
+            "source_stage": ArtifactSourceStage.ARCHITECT.value,
+        }
+    )
+    if not spec_payload.get("functional_requirements"):
+        spec_payload["functional_requirements"] = user_task_spec.refined_requirements
+
+    spec_reg = SpecReg.model_validate(spec_payload)
+    transcript.update(
+        {
+            "stage": "architect",
+            "profile": llm_config.profile,
+            "parsed_spec_reg": spec_reg.model_dump(mode="json"),
+        }
+    )
+    return spec_reg, transcript
+
+
 def init_context_node(state: GenWorkflowState) -> Dict[str, Any]:
     """
     节点 1：上下文初始化。
@@ -596,9 +765,39 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
     task = state["task"]
     user_task_spec = state.get("user_task_spec")
     verify_rpt = state.get("verify_rpt")
+    previous_spec_reg = state.get("previous_spec_reg")
+    llm_config = state.get("llm_config")
 
     if user_task_spec is None:
         raise ValueError("user_task_spec is missing")
+
+    if llm_config is not None and llm_config.enabled and not _has_injection_in_user_task_spec(user_task_spec):
+        try:
+            spec_reg, llm_transcript = _build_spec_reg_with_llm(
+                task=task,
+                user_task_spec=user_task_spec,
+                previous_spec_reg=previous_spec_reg,
+                verify_rpt=verify_rpt,
+                llm_config=llm_config,
+            )
+            return {"spec_reg": spec_reg, "llm_transcripts": [llm_transcript]}
+        except Exception as exc:  # noqa: BLE001
+            fallback_spec_reg = _build_dummy_spec_reg(
+                task=task,
+                user_task_spec=user_task_spec,
+                verify_rpt=verify_rpt,
+            )
+            return {
+                "spec_reg": fallback_spec_reg,
+                "llm_transcripts": [
+                    {
+                        "stage": "architect",
+                        "profile": llm_config.profile,
+                        "error": str(exc),
+                        "fallback": "dummy_spec_reg",
+                    }
+                ],
+            }
 
     spec_reg = _build_dummy_spec_reg(
         task=task,
@@ -687,20 +886,31 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
 
     if llm_transcripts:
         llm_dir.mkdir(parents=True, exist_ok=True)
-        llm_trace_path = llm_dir / f"CoderChat_iter{task.iteration}.json"
-        llm_trace_path.write_text(
-            json.dumps(
-                {
-                    "task_id": task.task_id,
-                    "iteration": task.iteration,
-                    "top_module": task.top_module,
-                    "transcripts": llm_transcripts,
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
+        transcripts_by_stage: Dict[str, List[Dict[str, Any]]] = {}
+        for transcript in llm_transcripts:
+            stage = str(transcript.get("stage", "unknown"))
+            transcripts_by_stage.setdefault(stage, []).append(transcript)
+
+        stage_file_names = {
+            "architect": "ArchitectChat",
+            "coder": "CoderChat",
+        }
+        for stage, stage_transcripts in transcripts_by_stage.items():
+            trace_name = stage_file_names.get(stage, f"{stage.title()}Chat")
+            llm_trace_path = llm_dir / f"{trace_name}_iter{task.iteration}.json"
+            llm_trace_path.write_text(
+                json.dumps(
+                    {
+                        "task_id": task.task_id,
+                        "iteration": task.iteration,
+                        "top_module": task.top_module,
+                        "transcripts": stage_transcripts,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
 
     verify_rpt = state.get("verify_rpt")
     summary = f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}"

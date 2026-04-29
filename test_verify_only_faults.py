@@ -111,6 +111,10 @@ def _change_data_width(rtl_text: str) -> str:
     return rtl_text.replace("input wire [7:0] i_data", "input wire [3:0] i_data")
 
 
+def _add_extra_port(rtl_text: str) -> str:
+    return rtl_text.replace("    output reg o_done\n", "    output reg o_done,\n    output wire debug_extra\n")
+
+
 def _break_compile_only(rtl_text: str) -> str:
     return rtl_text.replace("o_done <= |i_data;", "o_done <= |i_data")
 
@@ -120,6 +124,7 @@ CASES: list[tuple[str, str, Callable[[str], str]]] = [
     ("missing_port", "FAIL_SEMANTIC", _remove_output_port),
     ("direction_mismatch", "FAIL_SEMANTIC", _change_output_direction),
     ("width_mismatch", "FAIL_SEMANTIC", _change_data_width),
+    ("extra_port", "FAIL_SEMANTIC", _add_extra_port),
     ("compile_error", "FAIL_COMPILE", _break_compile_only),
 ]
 

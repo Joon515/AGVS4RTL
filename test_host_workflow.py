@@ -20,6 +20,11 @@ def _post_workflow(url, payload):
     return result
 
 
+def _disable_llm(payload):
+    payload["llm"] = {"enabled": False}
+    return payload
+
+
 def _executed_nodes(result):
     return [step["node"] for step in result.get("data", {}).get("trace", [])]
 
@@ -67,12 +72,12 @@ def _assert_common_failure(result, expected_verdict):
 
 
 def run_pass_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_logic",
         "raw_input_text": "Please fix the bugs and generate a simple sequential done logic module",
         "refined_requirements": ["reset to 0", "otherwise 1"],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== PASS 主路径验收 =====")
     result = _post_workflow(url, payload)
@@ -80,7 +85,7 @@ def run_pass_case(url):
 
 
 def run_retry_semantic_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_retry",
         "raw_input_text": "Generate a simple sequential done logic module and validate retry repair",
         "refined_requirements": [
@@ -89,7 +94,7 @@ def run_retry_semantic_case(url):
             "AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE",
         ],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== FAIL_SEMANTIC -> retry -> PASS 闭环验收 =====")
     result = _post_workflow(url, payload)
@@ -108,7 +113,7 @@ def run_retry_semantic_case(url):
 
 
 def run_retry_compile_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_compile_retry",
         "raw_input_text": "Generate a simple sequential done logic module and validate compile retry repair",
         "refined_requirements": [
@@ -117,7 +122,7 @@ def run_retry_compile_case(url):
             "AGVS4RTL_INJECT_FAIL_COMPILE_ONCE",
         ],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== FAIL_COMPILE -> retry -> PASS 闭环验收 =====")
     result = _post_workflow(url, payload)
@@ -136,7 +141,7 @@ def run_retry_compile_case(url):
 
 
 def run_infra_error_no_retry_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_infra_fail",
         "raw_input_text": "Generate a simple sequential done logic module and validate infra failure routing",
         "refined_requirements": [
@@ -145,7 +150,7 @@ def run_infra_error_no_retry_case(url):
             "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE",
         ],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== INFRA_ERROR -> archive_failed 非重试验收 =====")
     result = _post_workflow(url, payload)
@@ -183,7 +188,7 @@ def _assert_semantic_retry(result, expected_detail):
 
 
 def run_port_direction_retry_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_direction_retry",
         "raw_input_text": "Generate a simple sequential done logic module and validate port direction repair",
         "refined_requirements": [
@@ -192,7 +197,7 @@ def run_port_direction_retry_case(url):
             "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE",
         ],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== PORT_DIRECTION mismatch -> retry -> PASS 静态契约验收 =====")
     result = _post_workflow(url, payload)
@@ -200,7 +205,7 @@ def run_port_direction_retry_case(url):
 
 
 def run_port_width_retry_case(url):
-    payload = {
+    payload = _disable_llm({
         "top_module": "seq_done_width_retry",
         "raw_input_text": "Generate a simple sequential done logic module and validate port width repair",
         "refined_requirements": [
@@ -209,7 +214,7 @@ def run_port_width_retry_case(url):
             "AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE",
         ],
         "max_iterations": 2,
-    }
+    })
 
     print("\n===== PORT_WIDTH mismatch -> retry -> PASS 静态契约验收 =====")
     result = _post_workflow(url, payload)
