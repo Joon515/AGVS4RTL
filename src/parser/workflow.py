@@ -17,6 +17,7 @@ from src.common.models import (
     LlmRuntimeConfig,
     ParserLlmAnalysis,
     TaskPaths,
+    build_json_schema_response_format,
     UserTaskSpec,
     VerifyNodeOutput,
     VerifyTaskPayload,
@@ -181,6 +182,7 @@ def _call_parser_llm(
         "messages": messages,
         "temperature": 0.0,
         "stream": False,
+        "response_format": build_json_schema_response_format(ParserLlmAnalysis, "ParserLlmAnalysis"),
     }
     headers = {
         "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",

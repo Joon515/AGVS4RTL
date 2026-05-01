@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Dict, Optional, Generic, TypeVar, Literal
+from typing import List, Dict, Optional, Generic, TypeVar, Literal, Any
 from datetime import datetime, timezone
 import uuid
 import re
@@ -719,6 +719,18 @@ class LlmRuntimeConfig(StrictBaseModel):
         if info.field_name == "profile" and v is None:
             raise ValueError("LlmRuntimeConfig.profile cannot be empty")
         return _validate_optional_non_empty_str(v, f"LlmRuntimeConfig.{info.field_name}")
+
+
+def build_json_schema_response_format(model_class: type[BaseModel], name: str) -> Dict[str, Any]:
+    """Build OpenAI-compatible response_format dict from a Pydantic model."""
+    schema = model_class.model_json_schema()
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name,
+            "schema": schema,
+        },
+    }
 
 
 class ParserLlmAnalysis(StrictBaseModel):

@@ -1,1 +1,0 @@
-Generate a small Verilog module named seq_done_parser_llm_todo. It has i_clk, active-low i_rst_n, and o_done. Reset drives o_done to 0; after reset is released, o_done should become 1.
