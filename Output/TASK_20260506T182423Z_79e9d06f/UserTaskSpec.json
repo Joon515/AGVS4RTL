@@ -1,0 +1,18 @@
+{
+  "task_id": "TASK_20260506T182423Z_79e9d06f",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "fuzzy_8bit_datapath_smoke",
+  "created_at": "2026-05-06T18:24:24.131268Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260506T182423Z_79e9d06f/Origin/request.txt",
+  "refined_requirements": [
+    "请生成一个 Verilog-2001 组合逻辑数据处理模块，顶层名为 fuzzy_8bit_datapath_smoke。它大体上要支持 8 位输入和 8 位输出，可以根据一个简单控制信号在几种常见数据处理行为之间切换，例如透传、取反、加一或清零这类功能都可以，但我暂时没有把每个操作数、opcode 和端口一一列清楚。请你自行补全合理的顶层端口、操作选择和默认行为；不要添加时钟、复位或 done 端口。"
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260506T182423Z_79e9d06f",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260506T182423Z_79e9d06f/Result",
+  "target_protocol": null,
+  "design_rules": []
+}

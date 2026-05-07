@@ -4,6 +4,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-Output/
+## Output/
 shared_workspace/
 .venv
