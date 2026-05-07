@@ -25,7 +25,6 @@ from src.common.models import (
     UserTaskSpec,
     VerifyRpt,
     WorkTaskPayload,
-    build_json_schema_response_format,
 )
 
 
@@ -531,7 +530,6 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
 def _call_openai_compatible_chat(
     llm_config: LlmRuntimeConfig,
     messages: List[Dict[str, str]],
-    response_format: Optional[Dict[str, Any]] = None,
 ) -> tuple[str, Dict[str, Any]]:
     if not llm_config.base_url:
         raise ValueError("LLM is enabled but base_url is missing")
@@ -540,14 +538,12 @@ def _call_openai_compatible_chat(
     if not llm_config.model:
         raise ValueError("LLM is enabled but model is missing")
 
-    payload: Dict[str, Any] = {
+    payload = {
         "model": llm_config.model,
         "messages": messages,
         "temperature": 0.1,
         "stream": False,
     }
-    if response_format is not None:
-        payload["response_format"] = response_format
     headers = {
         "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
         "Content-Type": "application/json",
@@ -633,10 +629,7 @@ def _emit_verilog_with_llm(
         },
     ]
 
-    content, transcript = _call_openai_compatible_chat(
-        llm_config, messages,
-        response_format=build_json_schema_response_format(SpecReg, "SpecReg"),
-    )
+    content, transcript = _call_openai_compatible_chat(llm_config, messages)
     transcript.update(
         {
             "stage": "coder",

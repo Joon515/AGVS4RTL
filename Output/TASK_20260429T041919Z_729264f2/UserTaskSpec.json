@@ -1,0 +1,25 @@
+{
+  "task_id": "TASK_20260429T041919Z_729264f2",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_ONLY",
+  "top_module": "seq_done_parser_llm_todo",
+  "created_at": "2026-04-29T04:19:57.088866Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260429T041919Z_729264f2/Origin/request.txt",
+  "refined_requirements": [
+    "Module seq_done_parser_llm_todo with inputs i_clk, i_rst_n (active-low) and output reg o_done.",
+    "Asynchronous active-low reset: o_done <= 0 while i_rst_n is low.",
+    "After reset is released (i_rst_n high), o_done must become 1 at the next positive clock edge and stay 1 permanently.",
+    "Use always @(posedge i_clk or negedge i_rst_n)."
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260429T041919Z_729264f2",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260429T041919Z_729264f2/Result",
+  "target_protocol": null,
+  "design_rules": [
+    "Use non-blocking assignment (<=) for sequential logic.",
+    "Active-low asynchronous reset.",
+    "Positive edge-triggered clock."
+  ]
+}

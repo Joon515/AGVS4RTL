@@ -1,0 +1,20 @@
+{
+  "task_id": "TASK_20260429T045553Z_07cf7b5b",
+  "iteration": 0,
+  "refactor_label": "NONE",
+  "intent": "GEN_WITH_TEST",
+  "top_module": "seq_done_direction_retry",
+  "created_at": "2026-04-29T04:55:53.214377Z",
+  "source_stage": null,
+  "prompt_workspace_path": "/app/Output/TASK_20260429T045553Z_07cf7b5b/Origin/request.txt",
+  "refined_requirements": [
+    "reset to 0",
+    "otherwise 1",
+    "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE"
+  ],
+  "workspace_dir": "/app/shared_workspace/TASK_20260429T045553Z_07cf7b5b",
+  "external_source_path": null,
+  "external_target_path": "/app/Output/TASK_20260429T045553Z_07cf7b5b/Result",
+  "target_protocol": null,
+  "design_rules": []
+}

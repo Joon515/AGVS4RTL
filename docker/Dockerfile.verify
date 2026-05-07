@@ -1,5 +1,9 @@
 # docker/Dockerfile.verify
+<<<<<<< HEAD
 FROM docker.m.daocloud.io/library/python:3.11-slim-bullseye
+=======
+FROM python:3.11-slim-bullseye
+>>>>>>> parent of 954c15d (初步解决了环境问题，通过删除venv、重置bash解决。为输出添加了openai的build_json_schema_response_format以约束输出内容，防止输出内容不符合类型要求。原测试已通过，但新增的更复杂、模糊的测试出现严重的假通过问题，待明天解决)
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

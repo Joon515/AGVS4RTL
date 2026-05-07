@@ -1,0 +1,1 @@
+Generate a small Verilog module named seq_done_real_llm_trace2. It has i_clk, active-low i_rst_n, and o_done. Reset drives o_done to 0; otherwise o_done becomes 1.
