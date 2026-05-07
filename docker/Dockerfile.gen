@@ -1,5 +1,5 @@
 # docker/Dockerfile.gen
-FROM python:3.11-slim-bullseye
+FROM docker.m.daocloud.io/library/python:3.11-slim-bullseye
 
 # 1. 设置基础环境与 Verible 版本变量 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,7 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. 下载 Verible
-RUN curl -L --fail https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz | tar xz -C /usr/local --strip-components=1
+RUN curl -L --fail https://ghfast.top/https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz | tar xz -C /usr/local --strip-components=1
 
 # 6. 放宽运行所需执行权限
 RUN chmod -R a+rX /usr/local/lib/python3.11/site-packages

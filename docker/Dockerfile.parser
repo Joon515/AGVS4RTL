@@ -1,5 +1,5 @@
 # docker/Dockerfile.parser
-FROM python:3.11-slim-bullseye
+FROM docker.m.daocloud.io/library/python:3.11-slim-bullseye
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
 	PYTHONUNBUFFERED=1 \

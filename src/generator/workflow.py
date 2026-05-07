@@ -555,6 +555,8 @@ def _call_openai_compatible_chat(
 
     with httpx.Client(timeout=120.0) as client:
         response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
+        if response.status_code >= 400:
+            logger.error("LLM API error: status=%s, body=%s", response.status_code, response.text)
         response.raise_for_status()
 
     response_payload = response.json()
