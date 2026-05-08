@@ -38,6 +38,7 @@ from src.common.models import (
     ErrorSnapshot,
     VerifyRpt,
     ApiResponse,
+    HealthStatus,
     LlmRuntimeConfig,
     ParserLlmAnalysis,
     # --- Workflow payloads ---
@@ -51,6 +52,17 @@ from src.common.models import (
     # --- Utility functions ---
     generate_global_task_id,
     build_task_paths,
+)
+
+from src.common.llm_utils import (
+    LLM_HEADER_ENABLED,
+    LLM_HEADER_BASE_URL,
+    LLM_HEADER_API_KEY,
+    LLM_HEADER_MODEL,
+    LLM_HEADER_PROFILE,
+    _chat_completions_url,
+    _extract_json_object,
+    _call_openai_compatible_chat,
 )
 
 __all__ = [
@@ -86,6 +98,7 @@ __all__ = [
     "ErrorSnapshot",
     "VerifyRpt",
     "ApiResponse",
+    "HealthStatus",
     "LlmRuntimeConfig",
     "ParserLlmAnalysis",
     # --- Workflow payloads ---
@@ -99,4 +112,13 @@ __all__ = [
     # --- Utility functions ---
     "generate_global_task_id",
     "build_task_paths",
+    # --- LLM utilities ---
+    "LLM_HEADER_ENABLED",
+    "LLM_HEADER_BASE_URL",
+    "LLM_HEADER_API_KEY",
+    "LLM_HEADER_MODEL",
+    "LLM_HEADER_PROFILE",
+    "_chat_completions_url",
+    "_extract_json_object",
+    "_call_openai_compatible_chat",
 ]

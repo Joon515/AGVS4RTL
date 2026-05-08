@@ -27,6 +27,12 @@ from src.common.models import (
     WorkTaskPayload,
 )
 
+from src.common.llm_utils import (
+    _chat_completions_url,
+    _extract_json_object,
+    _call_openai_compatible_chat,
+)
+
 
 class GenWorkflowState(TypedDict):
     """
@@ -417,13 +423,6 @@ def _has_injection_in_user_task_spec(user_task_spec: UserTaskSpec) -> bool:
     return "AGVS4RTL_INJECT_" in request_text
 
 
-def _chat_completions_url(base_url: str) -> str:
-    normalized = base_url.rstrip("/")
-    if normalized.endswith("/chat/completions"):
-        return normalized
-    return f"{normalized}/chat/completions"
-
-
 def _extract_verilog_code(content: str) -> str:
     fence_match = re.search(r"```(?:systemverilog|verilog|sv)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
     if fence_match is not None:
@@ -440,23 +439,6 @@ def _extract_verilog_code(content: str) -> str:
         raise ValueError("LLM response does not contain a complete Verilog module")
 
     return content.rstrip() + "\n"
-
-
-def _extract_json_object(content: str) -> Dict[str, Any]:
-    fence_match = re.search(r"```(?:json)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
-    if fence_match is not None:
-        content = fence_match.group(1)
-
-    content = content.strip()
-    start = content.find("{")
-    end = content.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("LLM architect response does not contain a JSON object")
-
-    parsed = json.loads(content[start:end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("LLM architect response JSON is not an object")
-    return parsed
 
 
 def _ensure_text_list(value: Any) -> List[str]:
@@ -525,77 +507,6 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
     normalized["edges"] = normalized_edges
 
     return normalized
-
-
-def _call_openai_compatible_chat(
-    llm_config: LlmRuntimeConfig,
-    messages: List[Dict[str, str]],
-) -> tuple[str, Dict[str, Any]]:
-    if not llm_config.base_url:
-        raise ValueError("LLM is enabled but base_url is missing")
-    if llm_config.api_key is None:
-        raise ValueError("LLM is enabled but api_key is missing")
-    if not llm_config.model:
-        raise ValueError("LLM is enabled but model is missing")
-
-    payload = {
-        "model": llm_config.model,
-        "messages": messages,
-        "temperature": 0.1,
-        "stream": False,
-    }
-    headers = {
-        "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
-        "Content-Type": "application/json",
-    }
-
-    with httpx.Client(timeout=120.0) as client:
-        response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
-        if response.status_code >= 400:
-            logger.error("LLM API error: status=%s, body=%s", response.status_code, response.text)
-        response.raise_for_status()
-
-    response_payload = response.json()
-    try:
-        content = response_payload["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError("LLM response is not OpenAI chat-completions compatible") from exc
-
-    if not isinstance(content, str) or not content.strip():
-        raise ValueError("LLM response content is empty")
-
-    sanitized_choices = []
-    for response_choice in response_payload.get("choices", []):
-        if not isinstance(response_choice, dict):
-            continue
-        message = response_choice.get("message")
-        if not isinstance(message, dict):
-            continue
-        sanitized_choices.append(
-            {
-                "index": response_choice.get("index"),
-                "message": {
-                    "role": message.get("role"),
-                    "content": message.get("content"),
-                },
-                "finish_reason": response_choice.get("finish_reason"),
-            }
-        )
-
-    return content, {
-        "request": {
-            "messages": messages,
-            "temperature": payload["temperature"],
-            "stream": payload["stream"],
-        },
-        "response": {
-            "id": response_payload.get("id"),
-            "object": response_payload.get("object"),
-            "created": response_payload.get("created"),
-            "choices": sanitized_choices,
-            "usage": response_payload.get("usage"),
-        },
-    }
 
 
 def _emit_verilog_with_llm(

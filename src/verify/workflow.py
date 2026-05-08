@@ -25,6 +25,11 @@ from src.common.models import (
     VerifyVerdict,
 )
 
+from src.common.llm_utils import (
+    _chat_completions_url,
+    _call_openai_compatible_chat,
+)
+
 
 class VerifyWorkflowState(TypedDict):
     """
@@ -89,82 +94,6 @@ Spec file path: {task_payload.spec_file_path}
 RTL path: {task_payload.rtl_path}
 """
     return [{"role": "system", "content": system_prompt}]
-
-
-def _chat_completions_url(base_url: str) -> str:
-    normalized = base_url.rstrip("/")
-    if normalized.endswith("/chat/completions"):
-        return normalized
-    return f"{normalized}/chat/completions"
-
-
-def _call_openai_compatible_chat(
-    llm_config: LlmRuntimeConfig,
-    messages: List[Dict[str, str]],
-) -> tuple[str, Dict[str, Any]]:
-    if not llm_config.base_url:
-        raise ValueError("LLM is enabled but base_url is missing")
-    if llm_config.api_key is None:
-        raise ValueError("LLM is enabled but api_key is missing")
-    if not llm_config.model:
-        raise ValueError("LLM is enabled but model is missing")
-
-    payload = {
-        "model": llm_config.model,
-        "messages": messages,
-        "temperature": 0.1,
-        "stream": False,
-    }
-    headers = {
-        "Authorization": f"Bearer {llm_config.api_key.get_secret_value()}",
-        "Content-Type": "application/json",
-    }
-
-    with httpx.Client(timeout=120.0) as client:
-        response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
-        response.raise_for_status()
-
-    response_payload = response.json()
-    try:
-        content = response_payload["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError("LLM response is not OpenAI chat-completions compatible") from exc
-
-    if not isinstance(content, str) or not content.strip():
-        raise ValueError("LLM response content is empty")
-
-    sanitized_choices = []
-    for response_choice in response_payload.get("choices", []):
-        if not isinstance(response_choice, dict):
-            continue
-        message = response_choice.get("message")
-        if not isinstance(message, dict):
-            continue
-        sanitized_choices.append(
-            {
-                "index": response_choice.get("index"),
-                "message": {
-                    "role": message.get("role"),
-                    "content": message.get("content"),
-                },
-                "finish_reason": response_choice.get("finish_reason"),
-            }
-        )
-
-    return content.strip(), {
-        "request": {
-            "messages": messages,
-            "temperature": payload["temperature"],
-            "stream": payload["stream"],
-        },
-        "response": {
-            "id": response_payload.get("id"),
-            "object": response_payload.get("object"),
-            "created": response_payload.get("created"),
-            "choices": sanitized_choices,
-            "usage": response_payload.get("usage"),
-        },
-    }
 
 
 def _summarize_rtl_for_prompt(rtl_text: Optional[str], max_chars: int = 6000) -> str:

@@ -706,6 +706,13 @@ class ApiResponse(StrictBaseModel, Generic[T]):
         return _validate_non_empty_str(v, "ApiResponse.message")
 
 
+class HealthStatus(BaseModel):
+    """服务探活响应体。"""
+    service: str = Field(..., description="服务名称")
+    state: str = Field(..., description="探活状态")
+    detail: str = Field(..., description="探活补充信息")
+
+
 class LlmRuntimeConfig(StrictBaseModel):
     enabled: bool = Field(default=False, description="是否为本次工作流启用 LLM")
     base_url: Optional[str] = Field(default=None, description="OpenAI-compatible LLM base URL")

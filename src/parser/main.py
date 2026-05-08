@@ -2,15 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import logging
 
-from src.common.models import ApiResponse, WorkflowRunRequest, WorkflowRunResult
+from src.common.models import ApiResponse, HealthStatus, WorkflowRunRequest, WorkflowRunResult
 from src.parser.workflow import run_workflow
-
-
-class HealthStatus(BaseModel):
-    """服务探活响应体。"""
-    service: str = Field(..., description="服务名称")
-    state: str = Field(..., description="探活状态")
-    detail: str = Field(..., description="探活补充信息")
 
 
 # 配置日志

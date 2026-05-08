@@ -28,12 +28,15 @@ from src.common.models import (
     generate_global_task_id,
 )
 
-
-LLM_HEADER_ENABLED = "X-AGVS4RTL-LLM-Enabled"
-LLM_HEADER_BASE_URL = "X-AGVS4RTL-LLM-Base-URL"
-LLM_HEADER_API_KEY = "X-AGVS4RTL-LLM-API-Key"
-LLM_HEADER_MODEL = "X-AGVS4RTL-LLM-Model"
-LLM_HEADER_PROFILE = "X-AGVS4RTL-LLM-Profile"
+from src.common.llm_utils import (
+    LLM_HEADER_ENABLED,
+    LLM_HEADER_API_KEY,
+    LLM_HEADER_BASE_URL,
+    LLM_HEADER_MODEL,
+    LLM_HEADER_PROFILE,
+    _chat_completions_url,
+    _extract_json_object,
+)
 
 
 class WorkflowState(TypedDict):
@@ -102,13 +105,6 @@ def _build_refined_requirements(request: WorkflowRunRequest) -> List[str]:
     raise ValueError("cannot build refined_requirements from empty request")
 
 
-def _chat_completions_url(base_url: str) -> str:
-    normalized = base_url.rstrip("/")
-    if normalized.endswith("/chat/completions"):
-        return normalized
-    return f"{normalized}/chat/completions"
-
-
 def _resolve_llm_config(request: WorkflowRunRequest) -> LlmRuntimeConfig:
     if request.llm is not None:
         return request.llm
@@ -120,23 +116,6 @@ def _resolve_llm_config(request: WorkflowRunRequest) -> LlmRuntimeConfig:
         model=os.getenv("AGVS4RTL_LLM_MODEL") or None,
         profile=os.getenv("AGVS4RTL_LLM_PROFILE", "default"),
     )
-
-
-def _extract_json_object(content: str) -> Dict[str, Any]:
-    fence_match = re.search(r"```(?:json)?\s*(.*?)```", content, re.IGNORECASE | re.DOTALL)
-    if fence_match is not None:
-        content = fence_match.group(1)
-
-    content = content.strip()
-    start = content.find("{")
-    end = content.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("LLM parser response does not contain a JSON object")
-
-    parsed = json.loads(content[start:end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("LLM parser response JSON is not an object")
-    return parsed
 
 
 def _call_parser_llm(

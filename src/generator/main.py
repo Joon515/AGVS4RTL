@@ -2,15 +2,15 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 import logging
 
-from src.common.models import ApiResponse, GenNodeOutput, LlmRuntimeConfig, WorkTaskPayload
+from src.common.models import ApiResponse, GenNodeOutput, HealthStatus, LlmRuntimeConfig, WorkTaskPayload
+from src.common.llm_utils import (
+    LLM_HEADER_ENABLED,
+    LLM_HEADER_BASE_URL,
+    LLM_HEADER_API_KEY,
+    LLM_HEADER_MODEL,
+    LLM_HEADER_PROFILE,
+)
 from src.generator.workflow import run_gen_workflow
-
-
-LLM_HEADER_ENABLED = "X-AGVS4RTL-LLM-Enabled"
-LLM_HEADER_BASE_URL = "X-AGVS4RTL-LLM-Base-URL"
-LLM_HEADER_API_KEY = "X-AGVS4RTL-LLM-API-Key"
-LLM_HEADER_MODEL = "X-AGVS4RTL-LLM-Model"
-LLM_HEADER_PROFILE = "X-AGVS4RTL-LLM-Profile"
 
 
 def _load_llm_config_from_headers(request: Request) -> LlmRuntimeConfig:
@@ -21,13 +21,6 @@ def _load_llm_config_from_headers(request: Request) -> LlmRuntimeConfig:
         model=request.headers.get(LLM_HEADER_MODEL),
         profile=request.headers.get(LLM_HEADER_PROFILE, "default"),
     )
-
-
-class HealthStatus(BaseModel):
-    """服务探活响应体。"""
-    service: str = Field(..., description="服务名称")
-    state: str = Field(..., description="探活状态")
-    detail: str = Field(..., description="探活补充信息")
 
 
 # 配置日志
