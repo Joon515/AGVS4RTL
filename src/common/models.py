@@ -267,6 +267,7 @@ class RtlNode(StrictBaseModel):
     node_id: str = Field(..., description="节点唯一标识，如 u_fetch_unit 或 blk_adder")
     node_type: NodeType = Field(default=NodeType.INSTANCE, description="节点类型")
     module_name: Optional[str] = Field(default=None, description="若是子模块例化，对应的模块名")
+    source_file: Optional[str] = Field(default=None, description="INSTANCE 节点对应的子模块 Verilog 源文件路径")
     description: str = Field(default="", description="节点功能描述与内部逻辑说明")
     is_leaf: bool = Field(default=False, description="是否为不可再分的叶子节点")
 
@@ -279,6 +280,11 @@ class RtlNode(StrictBaseModel):
     @classmethod
     def validate_module_name(cls, v: Optional[str]) -> Optional[str]:
         return _validate_optional_identifier(v, "node.module_name")
+
+    @field_validator("source_file")
+    @classmethod
+    def validate_source_file(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "RtlNode.source_file")
 
     @model_validator(mode="after")
     def validate_node_consistency(self) -> "RtlNode":
@@ -620,8 +626,10 @@ class VerifyRpt(BaseSyncMeta):
     toggle_coverage_pct: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="翻转覆盖率")
     sim_log_path: Optional[str] = Field(default=None, description="仿真日志物理路径")
     wave_file_path: Optional[str] = Field(default=None, description="波形文件物理路径")
+    testbench_path: Optional[str] = Field(default=None, description="生成的 cocotb testbench Python 文件路径")
+    makefile_path: Optional[str] = Field(default=None, description="cocotb Makefile 路径")
 
-    @field_validator("sim_log_path", "wave_file_path")
+    @field_validator("sim_log_path", "wave_file_path", "testbench_path", "makefile_path")
     @classmethod
     def validate_optional_paths(cls, v: Optional[str], info) -> Optional[str]:
         return _validate_optional_non_empty_str(v, f"VerifyRpt.{info.field_name}")
@@ -789,11 +797,17 @@ class WorkTaskPayload(StrictBaseModel):
     top_module: str = Field(..., description="目标顶层模块")
     spec_file_path: str = Field(..., description="UserTaskSpec 文件绝对路径")
     shared_task_dir: str = Field(..., description="共享工作区任务目录绝对路径")
+    verify_rpt_path: Optional[str] = Field(default=None, description="上一轮 VerifyRpt 文件绝对路径，供 Generator 读取修复参考")
 
     @field_validator("task_id", "spec_file_path", "shared_task_dir")
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"WorkTaskPayload.{info.field_name}")
+
+    @field_validator("verify_rpt_path")
+    @classmethod
+    def validate_verify_rpt_path(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "WorkTaskPayload.verify_rpt_path")
 
     @field_validator("top_module")
     @classmethod
