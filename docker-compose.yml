@@ -12,6 +12,7 @@ services:
       - PYTHONPATH=/app
       - GEN_SERVICE_URL=http://gen:8000
       - VERIFY_SERVICE_URL=http://verify:8000
+      - VERIFY_SERVICE_TIMEOUT_SECONDS=240
     ports:
       - "8001:8000"
     command: python -m uvicorn src.parser.main:app --host 0.0.0.0 --port 8000

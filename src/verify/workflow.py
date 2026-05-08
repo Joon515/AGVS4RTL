@@ -26,6 +26,18 @@ from src.common.models import (
     VerifyVerdict,
 )
 
+
+def _write_verify_status(sim_dir: str, iteration: int, status: str, stage: str) -> None:
+    """Write verify status file for Parser to read on timeout."""
+    from pathlib import Path
+    import json
+    status_path = Path(sim_dir) / f"VerifyStatus_iter{iteration}.json"
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps({"status": status, "stage": stage}, indent=2),
+        encoding="utf-8",
+    )
+
 from src.common.llm_utils import (
     _chat_completions_url,
     _call_openai_compatible_chat,
@@ -571,6 +583,7 @@ def init_context_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     try:
         spec_reg = _load_spec_reg(task_payload.spec_file_path)
     except Exception as exc:  # noqa: BLE001
+        _write_verify_status(paths["sim_dir"], task_payload.task.iteration, "completed", "init_context")
         return {
             "iteration": task_payload.task.iteration,
             "messages": messages,
@@ -586,6 +599,7 @@ def init_context_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     try:
         rtl_text = _load_rtl_text(task_payload.rtl_path)
     except Exception as exc:  # noqa: BLE001
+        _write_verify_status(paths["sim_dir"], task_payload.task.iteration, "completed", "init_context")
         return {
             "iteration": task_payload.task.iteration,
             "messages": messages,
@@ -599,6 +613,7 @@ def init_context_node(state: VerifyWorkflowState) -> Dict[str, Any]:
             ),
         }
 
+    _write_verify_status(paths["sim_dir"], task_payload.task.iteration, "running", "init_context")
     return {
         "iteration": task_payload.task.iteration,
         "messages": messages,
@@ -855,6 +870,11 @@ def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
         })
 
     Path(verify_rpt_path).write_text(verify_rpt.model_dump_json(indent=2), encoding="utf-8")
+
+    sim_dir = state.get("sim_dir")
+    if sim_dir:
+        iteration = state["task_payload"].task.iteration
+        _write_verify_status(sim_dir, iteration, "completed", "finalize")
 
     if llm_transcripts:
         task = state["task_payload"].task

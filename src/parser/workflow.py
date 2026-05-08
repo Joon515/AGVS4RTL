@@ -20,6 +20,7 @@ from src.common.models import (
     TaskPaths,
     UserTaskSpec,
     VerifyNodeOutput,
+    VerifyRpt,
     VerifyTaskPayload,
     WorkTaskPayload,
     WorkflowRunRequest,
@@ -494,31 +495,78 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
         rtl_paths=gen_output.rtl_paths,
     )
 
-    with httpx.Client(timeout=20.0) as client:
-        response = client.post(
-            endpoint,
-            json=verify_payload.model_dump(mode="json"),
-            headers=_build_llm_forward_headers(request),
-        )
-        response.raise_for_status()
+    try:
+        verify_timeout = float(os.getenv("VERIFY_SERVICE_TIMEOUT_SECONDS", "240"))
+    except Exception:
+        verify_timeout = 240.0
 
-    response_payload = response.json()
-    if response_payload.get("status") != "success" or response_payload.get("data") is None:
-        raise ValueError("verify returned empty data")
-
-    verify_output = VerifyNodeOutput.model_validate(response_payload["data"])
-
-    return {
-        "verify_output": verify_output,
-        "trace": [
-            WorkflowTraceStep(
-                node="verify_stateless",
-                status="success",
-                detail=str(response_payload.get("message", "verify completed")),
-                iteration=task.iteration,
+    try:
+        with httpx.Client(timeout=verify_timeout) as client:
+            response = client.post(
+                endpoint,
+                json=verify_payload.model_dump(mode="json"),
+                headers=_build_llm_forward_headers(request),
             )
-        ],
-    }
+            response.raise_for_status()
+
+        response_payload = response.json()
+        if response_payload.get("status") != "success" or response_payload.get("data") is None:
+            raise ValueError("verify returned empty data")
+
+        verify_output = VerifyNodeOutput.model_validate(response_payload["data"])
+
+        return {
+            "verify_output": verify_output,
+            "trace": [
+                WorkflowTraceStep(
+                    node="verify_stateless",
+                    status="success",
+                    detail=str(response_payload.get("message", "verify completed")),
+                    iteration=task.iteration,
+                )
+            ],
+        }
+
+    except httpx.TimeoutException:
+        task_paths = state.get("task_paths")
+        if task_paths is None:
+            raise ValueError("verify service timeout and no task_paths available")
+
+        status_path = Path(task_paths.sim_dir) / f"VerifyStatus_iter{task.iteration}.json"
+        if status_path.exists():
+            status_data = json.loads(status_path.read_text(encoding="utf-8"))
+            status = status_data.get("status", "unknown")
+            if status == "completed":
+                rpt_path = Path(task_paths.sim_dir) / f"VerifyRpt_iter{task.iteration}.json"
+                if rpt_path.exists():
+                    verify_rpt = VerifyRpt.model_validate_json(rpt_path.read_text(encoding="utf-8"))
+                    verify_output = VerifyNodeOutput(
+                        report=verify_rpt,
+                        summary=f"Verification completed (recovered after timeout) for {verify_rpt.top_module} at iteration {verify_rpt.iteration}",
+                    )
+                    return {
+                        "verify_output": verify_output,
+                        "trace": [
+                            WorkflowTraceStep(
+                                node="verify_stateless",
+                                status="success",
+                                detail=f"verify completed (recovered after timeout); verdict={verify_rpt.verdict}",
+                                iteration=task.iteration,
+                            )
+                        ],
+                    }
+                else:
+                    raise ValueError(f"Verify status is completed but VerifyRpt not found at {rpt_path}")
+            else:
+                raise ValueError(
+                    f"Verify service is still running (status: {status}). "
+                    f"Retry the same task to check for results, or increase VERIFY_SERVICE_TIMEOUT_SECONDS (currently {verify_timeout}s)."
+                )
+        else:
+            raise ValueError(
+                f"Verify service did not respond within {verify_timeout}s and no status file was found. "
+                f"The verify service may not have started. Check verify container logs."
+            )
 
 
 def route_after_verify(
