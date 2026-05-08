@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import operator
 import json
 import os
@@ -66,6 +67,9 @@ class VerifyWorkflowState(TypedDict):
     verify_output: Optional[VerifyNodeOutput]
     llm_config: Optional[LlmRuntimeConfig]
     llm_transcripts: Annotated[List[Dict[str, Any]], operator.add]
+
+    testbench_path: Optional[str]
+    makefile_path: Optional[str]
 
 
 class RtlPortDecl(TypedDict):
@@ -702,9 +706,78 @@ def compile_check_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     return {"compile_errors": []}
 
 
+def simulate_node(state: VerifyWorkflowState) -> Dict[str, Any]:
+    """
+    节点 4：生成 cocotb testbench 与 Makefile 并可选择运行仿真。
+
+    跳过条件：
+    - 前序阶段已产生失败报告
+    - LLM 未配置（testbench 生成需要 LLM）
+    - spec_reg 或 sim_dir 缺失
+    """
+    if state.get("verify_rpt") is not None:
+        return {}
+
+    task_payload = state["task_payload"]
+    spec_reg = state.get("spec_reg")
+    llm_config = state.get("llm_config")
+    sim_dir = state.get("sim_dir")
+
+    if spec_reg is None or sim_dir is None:
+        return {}
+
+    from src.verify.simulate import generate_cocotb_makefile, generate_cocotb_testbench
+
+    try:
+        rtl_path = task_payload.rtl_path
+        rtl_paths = [rtl_path]
+        if hasattr(task_payload, 'rtl_paths') and task_payload.rtl_paths:
+            rtl_paths = task_payload.rtl_paths
+
+        testbench_path, llm_transcript = generate_cocotb_testbench(
+            spec_reg=spec_reg,
+            output_dir=sim_dir,
+            llm_config=llm_config,
+        )
+
+        makefile_path = generate_cocotb_makefile(
+            spec_reg=spec_reg,
+            output_dir=sim_dir,
+            rtl_paths=rtl_paths,
+        )
+
+        return {
+            "testbench_path": testbench_path,
+            "makefile_path": makefile_path,
+            "llm_transcripts": [llm_transcript],
+        }
+
+    except ValueError as exc:
+        logger = logging.getLogger(__name__)
+        logger.warning("Simulation skipped: %s", exc)
+        return {
+            "llm_transcripts": [{
+                "stage": "simulate",
+                "error": str(exc),
+            }],
+        }
+
+    except Exception as exc:
+        return {
+            "verify_rpt": _build_infra_error_report(
+                task_payload,
+                f"simulation infrastructure error: {exc}",
+            ),
+            "llm_transcripts": [{
+                "stage": "simulate",
+                "error": str(exc),
+            }],
+        }
+
+
 def diagnostic_enhance_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     """
-    节点 4：LLM 诊断增强。
+    节点 5：LLM 诊断增强。
 
     仅在 Verify 已产生失败报告且本次启用 LLM 时执行。
     规则化节点仍负责 verdict，LLM 只补充下一轮修复建议与可读诊断。
@@ -747,12 +820,13 @@ def diagnostic_enhance_node(state: VerifyWorkflowState) -> Dict[str, Any]:
 
 def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
     """
-    节点 4：落盘与输出节点。
+    节点 6：落盘与输出节点。
 
     职责：
     1. 若前序节点未生成 VerifyRpt，则构造 PASS 报告。
     2. 将 VerifyRpt 落盘到 shared_workspace/TASK_ID/sim。
     3. 组装并返回 VerifyNodeOutput。
+    4. 若仿真节点已运行，将 testbench_path 和 makefile_path 附加到报告中。
 
     文件命名规则：
     - VerifyRpt: sim/VerifyRpt_iter{iteration}.json
@@ -770,6 +844,15 @@ def finalize_node(state: VerifyWorkflowState) -> Dict[str, Any]:
             task_payload=state["task_payload"],
             compile_log_path=state.get("compile_log_path"),
         )
+
+    # Attach testbench paths if simulation ran
+    tb_path = state.get("testbench_path")
+    mf_path = state.get("makefile_path")
+    if tb_path or mf_path:
+        verify_rpt = verify_rpt.model_copy(update={
+            "testbench_path": tb_path,
+            "makefile_path": mf_path,
+        })
 
     Path(verify_rpt_path).write_text(verify_rpt.model_dump_json(indent=2), encoding="utf-8")
 
@@ -812,11 +895,12 @@ def build_verify_workflow_graph():
       -> init_context
       -> semantic_check
       -> compile_check
+      -> simulate
+      -> diagnostic_enhance
       -> finalize
       -> END
 
     后续可扩展方向：
-    - 在 compile_check 后增加 simulate 节点
     - 增加 coverage 节点
     - 增加 report post-process 节点
     """
@@ -825,13 +909,15 @@ def build_verify_workflow_graph():
     graph.add_node("init_context", init_context_node)
     graph.add_node("semantic_check", semantic_check_node)
     graph.add_node("compile_check", compile_check_node)
+    graph.add_node("simulate", simulate_node)
     graph.add_node("diagnostic_enhance", diagnostic_enhance_node)
     graph.add_node("finalize", finalize_node)
 
     graph.add_edge(START, "init_context")
     graph.add_edge("init_context", "semantic_check")
     graph.add_edge("semantic_check", "compile_check")
-    graph.add_edge("compile_check", "diagnostic_enhance")
+    graph.add_edge("compile_check", "simulate")
+    graph.add_edge("simulate", "diagnostic_enhance")
     graph.add_edge("diagnostic_enhance", "finalize")
     graph.add_edge("finalize", END)
 
@@ -867,6 +953,8 @@ def run_verify_workflow(
         "verify_output": None,
         "llm_config": llm_config,
         "llm_transcripts": [],
+        "testbench_path": None,
+        "makefile_path": None,
     }
 
     final_state = app.invoke(initial_state)
