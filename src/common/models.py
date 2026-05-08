@@ -191,7 +191,7 @@ class ParameterDef(StrictBaseModel):
     def validate_name(cls, v: str) -> str:
         _validate_identifier(v, "parameter.name")
         if v.upper() != v:
-            raise ValueError(...)
+            raise ValueError(f"parameter name '{v}' must be UPPERCASE / 参数名必须全大写")
         return v
 
 
