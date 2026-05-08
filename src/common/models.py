@@ -822,22 +822,42 @@ class GenNodeOutput(StrictBaseModel):
     spec_file_path: str = Field(..., description="SpecReg 文件路径")
     rtl_path: str = Field(..., description="Coder 生成的 RTL 文件路径")
     summary: str = Field(..., description="对本次生成动作的简短摘要")
+    rtl_paths: Optional[List[str]] = Field(default=None, description="多文件设计中所有 RTL 文件路径列表")
 
     @field_validator("spec_file_path", "rtl_path", "summary")
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"GenNodeOutput.{info.field_name}")
 
+    @field_validator("rtl_paths")
+    @classmethod
+    def validate_rtl_paths(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        for p in v:
+            _validate_non_empty_str(p, "GenNodeOutput.rtl_paths")
+        return v
+
 
 class VerifyTaskPayload(StrictBaseModel):
     task: WorkTaskPayload = Field(..., description="原始任务载荷")
     spec_file_path: str = Field(..., description="用于核对接口和生成 Testbench 的 SpecReg 文件路径")
     rtl_path: str = Field(..., description="待验证的 RTL 文件路径")
+    rtl_paths: Optional[List[str]] = Field(default=None, description="多文件设计中所有待验证 RTL 文件路径")
 
     @field_validator("spec_file_path", "rtl_path")
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"VerifyTaskPayload.{info.field_name}")
+
+    @field_validator("rtl_paths")
+    @classmethod
+    def validate_rtl_paths(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        for p in v:
+            _validate_non_empty_str(p, "VerifyTaskPayload.rtl_paths")
+        return v
 
 
 class VerifyNodeOutput(StrictBaseModel):

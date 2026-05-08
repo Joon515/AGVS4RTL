@@ -273,6 +273,76 @@ def _derive_edges() -> List[RtlEdge]:
     ]
 
 
+def _apply_fix_from_verify_rpt(spec_reg: SpecReg, verify_rpt: VerifyRpt) -> SpecReg:
+    """
+    Apply minimal repair to SpecReg based on VerifyRpt error details.
+
+    Handles 3 concrete mismatch types from PortMismatch detail field:
+    1. "port direction mismatch" → fix port direction
+    2. "port width mismatch" → fix port width
+    3. "missing" / "unexpected" → add/remove port
+    """
+    port_map = {p.name: p for p in spec_reg.ports}
+    updated_ports = list(spec_reg.ports)
+
+    for mismatch in verify_rpt.error_details.mismatched_ports:
+        detail = mismatch.detail or ""
+
+        if "port direction mismatch" in detail:
+            target_name = mismatch.expected_port
+            if target_name in port_map:
+                port = port_map[target_name]
+                if "actual input" in detail:
+                    corrected_dir = PortDirection.INPUT
+                elif "actual output" in detail:
+                    corrected_dir = PortDirection.OUTPUT
+                elif "actual inout" in detail:
+                    corrected_dir = PortDirection.INOUT
+                else:
+                    corrected_dir = (
+                        PortDirection.OUTPUT
+                        if port.direction == PortDirection.INPUT
+                        else PortDirection.INPUT
+                    )
+
+                updated_ports = [
+                    p.model_copy(update={"direction": corrected_dir})
+                    if p.name == target_name
+                    else p
+                    for p in updated_ports
+                ]
+
+        elif "port width mismatch" in detail:
+            target_name = mismatch.expected_port
+            if target_name in port_map:
+                width_match = re.search(r"actual\s+(\S+)", detail)
+                if width_match:
+                    actual_width = width_match.group(1)
+                    updated_ports = [
+                        p.model_copy(update={"width": actual_width})
+                        if p.name == target_name
+                        else p
+                        for p in updated_ports
+                    ]
+
+        elif "missing" in detail:
+            if "unexpected" in detail:
+                new_port = PortDef(
+                    name=mismatch.actual_port or mismatch.expected_port,
+                    direction=PortDirection.INPUT,
+                    width="1",
+                    description="Auto-added from VerifyRpt: previously unexpected port",
+                )
+                updated_ports.append(new_port)
+
+    return spec_reg.model_copy(
+        update={
+            "ports": updated_ports,
+            "refactor_label": verify_rpt.suggested_refactor_level(),
+        }
+    )
+
+
 def _build_dummy_spec_reg(
     task: WorkTaskPayload,
     user_task_spec: UserTaskSpec,
@@ -410,6 +480,96 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
         "end\n"
         "\n"
         "endmodule\n"
+    )
+
+
+def _derive_submodule_ports(node: RtlNode, spec_reg: SpecReg) -> List[PortDef]:
+    """
+    从连接到该节点的边推导子模块端口列表。
+
+    遍历 SpecReg 中的所有 RtlEdge，找出 source 或 target 为
+    该节点的端口，并推导方向。同时附加顶层时钟/复位端口。
+    """
+    seen_ports: Dict[str, PortDef] = {}
+    for edge in spec_reg.edges:
+        if edge.source.node_id == node.node_id:
+            port = PortDef(
+                name=edge.source.port_name,
+                direction=PortDirection.OUTPUT,
+                width=edge.width,
+            )
+            if port.name not in seen_ports:
+                seen_ports[port.name] = port
+            elif seen_ports[port.name].direction == PortDirection.INPUT:
+                seen_ports[port.name] = seen_ports[port.name].model_copy(
+                    update={"direction": PortDirection.INOUT}
+                )
+        if edge.target.node_id == node.node_id:
+            port = PortDef(
+                name=edge.target.port_name,
+                direction=PortDirection.INPUT,
+                width=edge.width,
+            )
+            if port.name not in seen_ports:
+                seen_ports[port.name] = port
+            elif seen_ports[port.name].direction == PortDirection.OUTPUT:
+                seen_ports[port.name] = seen_ports[port.name].model_copy(
+                    update={"direction": PortDirection.INOUT}
+                )
+    ports = list(seen_ports.values())
+
+    if spec_reg.has_clock_reset_definition():
+        cr = spec_reg.clock_and_reset[0]
+        if cr.clock_name not in seen_ports:
+            ports.append(
+                PortDef(
+                    name=cr.clock_name,
+                    direction=PortDirection.INPUT,
+                    width="1",
+                    is_clock=True,
+                )
+            )
+        if cr.reset_name not in seen_ports:
+            ports.append(
+                PortDef(
+                    name=cr.reset_name,
+                    direction=PortDirection.INPUT,
+                    width="1",
+                    is_reset=True,
+                )
+            )
+    return ports
+
+
+def _emit_submodule_verilog(
+    node: RtlNode,
+    ports: List[PortDef],
+    spec_reg: SpecReg,
+) -> str:
+    """
+    根据节点定义生成最小子模块 Verilog 骨架。
+
+    生成的模块包含端口声明、描述注释和 TODO 占位符，
+    不生成实际逻辑代码。
+    """
+    port_lines: List[str] = []
+    for p in ports:
+        direction = p.direction.value
+        if p.width != "1":
+            port_lines.append(f"    {direction} wire [{p.width}:0] {p.name}")
+        else:
+            port_lines.append(f"    {direction} wire {p.name}")
+    port_block = ",\n".join(port_lines)
+
+    return (
+        f"module {node.module_name}(\n"
+        f"{port_block}\n"
+        f");\n"
+        f"\n"
+        f"// {node.description}\n"
+        f"// TODO: Implement {node.node_type.value} logic for {node.node_id}\n"
+        f"\n"
+        f"endmodule\n"
     )
 
 
@@ -705,6 +865,9 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
                 user_task_spec=user_task_spec,
                 verify_rpt=verify_rpt,
             )
+            # Apply repair from VerifyRpt if available
+            if verify_rpt is not None and verify_rpt.error_details.mismatched_ports:
+                fallback_spec_reg = _apply_fix_from_verify_rpt(fallback_spec_reg, verify_rpt)
             return {
                 "spec_reg": fallback_spec_reg,
                 "llm_transcripts": [
@@ -728,6 +891,10 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
         user_task_spec=user_task_spec,
         verify_rpt=verify_rpt,
     )
+
+    # Apply repair from VerifyRpt if available
+    if verify_rpt is not None and verify_rpt.error_details.mismatched_ports:
+        spec_reg = _apply_fix_from_verify_rpt(spec_reg, verify_rpt)
 
     return {"spec_reg": spec_reg}
 
@@ -814,6 +981,20 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     if task.iteration == 0 and AGVS4RTL_INJECT_INFRA_MISSING_RTL in requirements_text:
         rtl_path.unlink()
 
+    # 多文件输出：当 SpecReg 为层次化设计且包含 INSTANCE 节点时，
+    # 为每个有 source_file 的子模块生成独立的 .v 骨架文件。
+    sub_module_paths: List[str] = []
+    if spec_reg.is_hierarchical_design():
+        instance_nodes = spec_reg.instance_nodes()
+        for node in instance_nodes:
+            if node.source_file and node.module_name:
+                sub_path = rtl_dir / node.source_file
+                sub_path.parent.mkdir(parents=True, exist_ok=True)
+                sub_ports = _derive_submodule_ports(node, spec_reg)
+                sub_rtl = _emit_submodule_verilog(node, sub_ports, spec_reg)
+                sub_path.write_text(sub_rtl, encoding="utf-8")
+                sub_module_paths.append(str(sub_path))
+
     if llm_transcripts:
         llm_dir.mkdir(parents=True, exist_ok=True)
         transcripts_by_stage: Dict[str, List[Dict[str, Any]]] = {}
@@ -844,6 +1025,8 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
 
     verify_rpt = state.get("verify_rpt")
     summary = f"Generated SpecReg and RTL for {task.top_module} at iteration {task.iteration}"
+    if sub_module_paths:
+        summary += f"; generated {len(sub_module_paths)} sub-module files"
     if verify_rpt is not None:
         summary += f" after previous verification verdict {verify_rpt.verdict}"
 

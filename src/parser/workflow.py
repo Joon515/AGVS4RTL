@@ -491,6 +491,7 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
         task=task,
         spec_file_path=gen_output.spec_file_path,
         rtl_path=gen_output.rtl_path,
+        rtl_paths=gen_output.rtl_paths,
     )
 
     with httpx.Client(timeout=20.0) as client:
@@ -561,8 +562,9 @@ def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
     3. 为下一次 Generator 调用保留最小必要上下文。
 
     注意：
-    - 当前冻结版 WorkTaskPayload 仍是轻量协议，不显式携带 VerifyRpt 路径。
-    - 因此这里主要通过 iteration 与共享工作区约定来驱动下一轮生成。
+    - verify_rpt_path 通过 WorkTaskPayload 协议显式传递给 Generator，
+      作为 filesystem convention 发现的补充（协议优先，约定为 fallback）。
+    - iteration 与共享工作区约定仍共同驱动下一轮生成。
     """
     task = state.get("task")
     verify_output = state.get("verify_output")
@@ -573,6 +575,18 @@ def prepare_retry_node(state: WorkflowState) -> Dict[str, Any]:
     report = verify_output.report
     next_iteration = task.iteration + 1
     task.iteration = next_iteration
+
+    # Set explicit verify_rpt_path so Generator receives it through protocol
+    # (complements the filesystem convention discovery in init_context_node)
+    task_paths = state.get("task_paths")
+    if task_paths is not None:
+        verify_rpt_path = f"{task_paths.sim_dir}/VerifyRpt_iter{task.iteration - 1}.json"
+        task.verify_rpt_path = verify_rpt_path
+        logging.getLogger(__name__).info(
+            "prepare_retry: iteration=%d, verify_rpt_path=%s",
+            next_iteration,
+            verify_rpt_path,
+        )
 
     detail = (
         f"prepare retry iteration={next_iteration}, "
