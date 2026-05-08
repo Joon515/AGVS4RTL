@@ -875,3 +875,14 @@ class WorkflowRunResult(StrictBaseModel):
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"WorkflowRunResult.{info.field_name}")
+
+
+# ==========================================
+# 注入标记常量 (用于测试/开发)
+# ==========================================
+
+AGVS4RTL_INJECT_FAIL_SEMANTIC = "AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE"
+AGVS4RTL_INJECT_FAIL_COMPILE = "AGVS4RTL_INJECT_FAIL_COMPILE_ONCE"
+AGVS4RTL_INJECT_FAIL_PORT_DIRECTION = "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE"
+AGVS4RTL_INJECT_FAIL_PORT_WIDTH = "AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE"
+AGVS4RTL_INJECT_INFRA_MISSING_RTL = "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE"

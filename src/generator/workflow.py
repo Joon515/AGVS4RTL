@@ -10,6 +10,11 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 
 from src.common.models import (
+    AGVS4RTL_INJECT_FAIL_COMPILE,
+    AGVS4RTL_INJECT_FAIL_PORT_DIRECTION,
+    AGVS4RTL_INJECT_FAIL_PORT_WIDTH,
+    AGVS4RTL_INJECT_FAIL_SEMANTIC,
+    AGVS4RTL_INJECT_INFRA_MISSING_RTL,
     ArtifactSourceStage,
     ClockResetDef,
     EndpointRef,
@@ -326,7 +331,7 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
     top_module = spec_reg.top_module
     requirements_text = "\n".join(spec_reg.functional_requirements)
 
-    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_SEMANTIC_ONCE" in requirements_text:
+    if spec_reg.iteration == 0 and AGVS4RTL_INJECT_FAIL_SEMANTIC in requirements_text:
         return (
             f"module {top_module}(\n"
             "    input wire i_clk,\n"
@@ -343,7 +348,7 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
             "endmodule\n"
         )
 
-    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_COMPILE_ONCE" in requirements_text:
+    if spec_reg.iteration == 0 and AGVS4RTL_INJECT_FAIL_COMPILE in requirements_text:
         return (
             f"module {top_module}(\n"
             "    input wire i_clk,\n"
@@ -361,7 +366,7 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
             "endmodule\n"
         )
 
-    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_PORT_DIRECTION_ONCE" in requirements_text:
+    if spec_reg.iteration == 0 and AGVS4RTL_INJECT_FAIL_PORT_DIRECTION in requirements_text:
         return (
             f"module {top_module}(\n"
             "    input wire i_clk,\n"
@@ -372,7 +377,7 @@ def _emit_verilog_from_spec(spec_reg: SpecReg) -> str:
             "endmodule\n"
         )
 
-    if spec_reg.iteration == 0 and "AGVS4RTL_INJECT_FAIL_PORT_WIDTH_ONCE" in requirements_text:
+    if spec_reg.iteration == 0 and AGVS4RTL_INJECT_FAIL_PORT_WIDTH in requirements_text:
         return (
             f"module {top_module}(\n"
             "    input wire i_clk,\n"
@@ -712,6 +717,12 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
                 ],
             }
 
+    if not _has_injection_in_user_task_spec(user_task_spec):
+        raise ValueError(
+            "LLM is required but not available for this task. "
+            "Enable LLM (set llm_config.enabled=True) or use AGVS4RTL_INJECT_* markers for test mode."
+        )
+
     spec_reg = _build_dummy_spec_reg(
         task=task,
         user_task_spec=user_task_spec,
@@ -751,8 +762,14 @@ def coder_node(state: GenWorkflowState) -> Dict[str, Any]:
             llm_config=llm_config,
         )
         return {"rtl_code": rtl_code, "llm_transcripts": [llm_transcript]}
-    else:
-        rtl_code = _emit_verilog_from_spec(spec_reg)
+
+    if not _has_injection_directive(spec_reg):
+        raise ValueError(
+            "LLM is required but not available for RTL generation. "
+            "Enable LLM or use AGVS4RTL_INJECT_* markers for test mode."
+        )
+
+    rtl_code = _emit_verilog_from_spec(spec_reg)
 
     return {"rtl_code": rtl_code}
 
@@ -794,7 +811,7 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
 
     rtl_path = rtl_dir / f"{task.top_module}.v"
     rtl_path.write_text(rtl_code, encoding="utf-8")
-    if task.iteration == 0 and "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE" in requirements_text:
+    if task.iteration == 0 and AGVS4RTL_INJECT_INFRA_MISSING_RTL in requirements_text:
         rtl_path.unlink()
 
     if llm_transcripts:

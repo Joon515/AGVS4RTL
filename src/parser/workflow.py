@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import operator
 import json
 import os
@@ -221,15 +222,19 @@ def _analyze_request_with_llm(
     request: WorkflowRunRequest,
     llm_config: LlmRuntimeConfig,
 ) -> tuple[Optional[ParserLlmAnalysis], Optional[Dict[str, Any]], Optional[str]]:
+    _log = logging.getLogger(__name__)
     if not llm_config.enabled:
+        _log.warning("Parser LLM analysis skipped: LLM not enabled")
         return None, None, None
     request_text = "\n".join([request.raw_input_text, *request.refined_requirements])
     if "AGVS4RTL_INJECT_" in request_text:
+        _log.info("Parser LLM analysis skipped: injection directive detected")
         return None, None, None
     try:
         analysis, transcript = _call_parser_llm(llm_config, request)
         return analysis, transcript, None
     except Exception as exc:
+        _log.error("Parser LLM analysis failed: %s", exc)
         return None, None, str(exc)
 
 
@@ -261,6 +266,7 @@ def _ensure_task_directories(task_paths: TaskPaths) -> None:
     - SharedWorkspace/TASK_ID/specs
     - SharedWorkspace/TASK_ID/rtl
     - SharedWorkspace/TASK_ID/sim
+    - SharedWorkspace/TASK_ID/llm
     """
     for path_str in [
         task_paths.origin_dir,
@@ -269,6 +275,7 @@ def _ensure_task_directories(task_paths: TaskPaths) -> None:
         task_paths.specs_dir,
         task_paths.rtl_dir,
         task_paths.sim_dir,
+        f"{task_paths.shared_task_dir}/llm",
     ]:
         Path(path_str).mkdir(parents=True, exist_ok=True)
 
@@ -382,6 +389,8 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
         trace_detail += "; parser LLM analysis saved to shared_workspace/llm/ParserChat_iter0.json"
     elif parser_llm_error is not None:
         trace_detail += "; parser LLM analysis failed, used fallback parser"
+    else:
+        trace_detail += "; parser LLM analysis skipped (disabled or injection mode)"
 
     return {
         "task": task,
