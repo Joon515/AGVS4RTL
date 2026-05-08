@@ -54,30 +54,30 @@ AGVS4RTL/
 
 ### 未来改进项目
 
-1. 引入 **失败注入测试与重试闭环验收**。当前系统已完成 `Parser + Generator + Verify Stub V1` 的最小生成-验证-归档闭环，下一阶段最重要的是补充 `FAIL_COMPILE`、`INFRA_ERROR` 等失败场景测试，并验证 `parser_initialize -> gen_stateless -> verify_stateless -> route -> prepare_retry -> gen_stateless` 的重试路径是否可稳定运行，使系统从“能验证”提升到“能闭环修复”。
+1. ~~引入失败注入测试与重试闭环验收~~ **（已完成）**。当前 retry 路径（FAIL_COMPILE、FAIL_SEMANTIC、INFRA_ERROR、PORT_DIRECTION、PORT_WIDTH）已通过集成测试验证，6/6 全部通过。
 
-2. 增强 Verify 的 **静态契约核查粒度**。当前 Verify Stub V1 已具备文件存在性检查、SpecReg 解析、最小顶层 module / ports 静态核查与可选的 `iverilog` 编译验证。下一阶段需要继续增强方向、位宽、时钟/复位映射、协议端口映射等更细粒度的契约检查能力，使 `FAIL_SEMANTIC` 的诊断结果更稳定、更适合驱动 Generator 修复。
+2. 继续增强 Verify 的**静态契约核查粒度**。当前已实现端口方向、位宽等核查，后续可补充时钟/复位映射核查、协议端口映射、跨模块接口一致性校验等。
 
-3. 扩展 Verify 的 **动态仿真能力**。在 V1 Stub 稳定后，后续将逐步引入基于 `functional_requirements`、`corner_cases`、`illegal_conditions` 和 `verification_directives` 的测试激励生成能力，接入 `cocotb + iverilog` 形成从静态核查到动态行为验证的完整闭环。
+3. 扩展 Verify 的**动态仿真能力**。当前已实现 cocotb testbench 自动生成（LLM 驱动）与 `simulate_node`，后续可补充覆盖率驱动测试生成、VCD 波形分析、断言自动生成等。
 
-4. 强化 Generator 的 **多轮修复利用能力**。虽然 Generator 已支持在 `iteration > 0` 时尝试读取上一轮 `VerifyRpt` 与 `SpecReg`，但当前修复逻辑仍以规则占位为主。下一阶段需要让 Architect / Coder 节点更真实地消费 `VerifyRpt.error_details` 与 `suggested_fix`，形成面向失败类型的差异化修复策略。
+4. 强化 Generator 的**多轮 LLM 修复利用能力**。当前规则化修复已验证，但 LLM 驱动按失败类型（语义/编译/端口/位宽）的差异化修复策略仍未实现。
 
-5. 补充 **工作流异常治理与可观测性**。当前工作流已经具备基础 `trace` 记录与归档机制，后续可继续增加更细粒度的错误分类、节点级耗时统计、任务级日志关联、失败现场保留策略与验收脚本，提升联调效率与问题定位能力。
+5. 补充**工作流异常治理与可观测性**。当前已补充 Verify 状态文件机制、Parser 超时自动恢复、ParserChat 日志；后续可增加节点级耗时统计、任务级日志关联、失败现场保留策略。
 
 ---
 
 ### 最新开发进度
 
-1. 已完成 `src/common/models.py` 的第一轮稳定化重构，统一了 Parser / Generator / Verify 当前阶段使用的核心协议模型，并修复了 `strict=True` 导致 FastAPI 枚举字段跨服务传输失败的问题。
+1. 完成 `src/common/models.py` 的大规模协议扩展：新增 `verify_rpt_path`、`source_file`、`testbench_path/makefile_path`、`rtl_paths` 等字段，以及 5 个注入标记常量。
 
-2. 已完成 Parser 工作流从最小生成闭环到完整编排闭环的恢复，当前主路径已扩展为 `parser_initialize -> gen_stateless -> verify_stateless -> route -> archive`，能够稳定完成任务初始化、UserTaskSpec 落盘、Generator 调度、Verify 调度、结果路由与归档。
+2. 完成 LLM 工具函数去重：创建 `src/common/llm_utils.py`，提取 `_chat_completions_url` 等函数及 LLM Header 常量；修复 N1（未定义 logger）和 N2（content.strip 不一致）两个 bug。
 
-3. 已完成 Generator 内部 LangGraph 骨架重构，形成 `init_context -> architect -> coder -> finalize` 四节点流程，并在不依赖 LLM 接口的情况下实现基于规则占位的 `SpecReg` 与 Verilog RTL 生成。
+3. 完成 B4 重试闭环与多文件 HDL 生成：Parser 显式传递 `verify_rpt_path`；Generator 新增 `_apply_fix_from_verify_rpt()` 消费验证报告执行规则化修复；`finalize_node` 支持多文件 .v 输出。
 
-4. 已完成 Verify Stub V1 的最小实现，形成 `init_context -> semantic_check -> compile_check -> finalize` 四节点流程，支持 `SpecReg` / RTL 文件存在性检查、SpecReg 解析校验、顶层 module / ports 的最小静态契约核查，以及可选的 `iverilog` 编译校验。
+4. 完成 B5 Cocotb 测试区生成：创建 `src/verify/simulate.py`，支持 LLM 驱动生成 cocotb testbench + 规则生成 Makefile；Verify 工作流新增 `simulate_node`。
 
-5. 已固化 Verify 侧报告落盘约定：当前验证报告统一输出到 `shared_workspace/TASK_ID/sim/VerifyRpt_iter{iteration}.json`，编译日志输出到 `shared_workspace/TASK_ID/sim/compile_iter{iteration}.log`，与 Generator 侧的 `SpecReg_iter{iteration}.json` 形成版本对应关系。
+5. 完成 Verify 超时治理：Parser 对 Verify 超时 20s → 240s（可配）；Verify 写 `VerifyStatus` 状态文件；Parser 超时后通过状态文件判断并自动恢复已完成结果。
 
-6. 已完成 Docker 三服务联调与运行时挂载修正：当前 Parser 对外映射端口为 `8001`，Generator / Verify 保持仅容器内可见；同时已补齐 `Output` 与 `shared_workspace` 的统一挂载，解决此前归档结果仅存在容器内部、宿主机不可见的问题。
+6. 完成基础设施清理：修复 Dockerfile Git 合并冲突；标准化 `__init__.py`；去重 `HealthStatus`；修正 `.gitignore` 笔误；LLM 不可用时 Generator 抛明确错误。
 
-7. 已成功跑通首个 `Parser + Generator + Verify Stub` 端到端样例，系统可返回 `WorkflowRunResult(success=true)`，并在宿主机 `Output/TASK_ID/Result/shared_workspace/` 下产出 `UserTaskSpec.json`、`SpecReg_iter0.json`、`{top_module}.v`、`VerifyRpt_iter0.json` 与编译日志等完整中间产物。
+7. 集成测试验证：`test_host_workflow.py` 6/6 全部通过（含 retry 闭环）；`test_fuzzy_requirement_workflow.py` 251s 完成；层级 HDL 多文件生成通过；cocotb testbench 生成通过。

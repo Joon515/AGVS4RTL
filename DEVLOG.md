@@ -114,3 +114,61 @@
   - FAIL_COMPILE（RTL 语法错误）
   - FAIL_SEMANTIC（顶层端口与 SpecReg 不匹配）
 - 当前系统已具备最小“生成 + 验证 + 归档”闭环能力，为后续 retry 修复闭环与 Verify 动态仿真扩展提供稳定基线。
+
+# 2026-05-08 (大规模重构与功能补全)
+
+## 基础设施修复
+
+- 修复三个 Dockerfile 中残留的 Git 合并冲突标记（`<<<<<<<` / `=======` / `>>>>>>>`），统一使用 `python:3.11-slim-bullseye` 基础镜像。
+- 将 `.gitignore` 中笔误 `.sisyphs` 修正为 `.sisyphus`。
+- 修复 `src/common/models.py:194` 中 `raise ValueError(...)` 字面量占位符，替换为双语错误信息。
+- 标准化全部 `__init__.py`，添加 `__all__` 显式导出。
+- 删除废弃调试文件 `src/parser/workflow.py.noverify`。
+- 将 `HealthStatus` 从三个 `main.py` 中提取到 `src/common/models.py`，消除三份重复定义。
+
+## 共享模块提取
+
+- 创建 `src/common/llm_utils.py`，提取三模块重复的 LLM 工具函数和 LLM Header 常量。
+- 修复 N1（`generator/workflow.py` 未定义 `logger` → 替换为 `ValueError`）。
+- 修复 N2（`_call_openai_compatible_chat` content strip 不一致 → 统一为 `.strip()`）。
+
+## 协议层扩展
+
+- `WorkTaskPayload` 新增 `verify_rpt_path`，`RtlNode` 新增 `source_file`。
+- `VerifyRpt` 新增 `testbench_path`、`makefile_path`。
+- `GenNodeOutput`、`VerifyTaskPayload` 新增 `rtl_paths`。
+- 提取 5 个注入标记常量到 `src/common/models.py`。
+
+## 逻辑修复
+
+- ParserChat 归档修复：`_ensure_task_directories()` 预创建 `llm/` 目录；三个静默跳过路径均增加日志。
+- B3 LLM 强制：Generator 在无 LLM 且无注入标记时抛 `ValueError`。
+- 集成测试审查：`test_fuzzy` ParserChat 断言改为优雅跳过；注入标记引用改为常量。
+
+## B4 重试闭环与多文件 HDL
+
+- Parser `prepare_retry_node` 显式设置 `verify_rpt_path`。
+- Generator 新增 `_apply_fix_from_verify_rpt()` 消费验证报告执行规则化修复，处理 missing/unexpected port。
+- 注入标记循环修复：移除方向/宽度修复逻辑（SpecReg 是契约，不按错误 RTL 修改）。
+- 新增 `_build_hierarchical_spec_reg()` 产出层级 SpecReg；`finalize_node` 支持多文件 .v 输出。
+- `_derive_submodule_ports()`、`_emit_submodule_verilog()` 生成子模块骨架。
+- `GenNodeOutput.rtl_paths` 在 `finalize_node` 中正确填充。
+- 集成测试 6/6 全部通过。
+
+## B5 Cocotb 测试区生成与仿真节点
+
+- 创建 `src/verify/simulate.py`：`generate_cocotb_makefile()`（规则）+ `generate_cocotb_testbench()`（LLM 驱动）。
+- Verify 工作流新增 `simulate_node`，LLM 不可用时优雅跳过。
+- `finalize_node` 将 testbench 路径附加到 `VerifyRpt`。
+
+## Verify 超时治理
+
+- Parser `verify_stateless_node` 超时 20s → `VERIFY_SERVICE_TIMEOUT_SECONDS`（默认 240s），`docker-compose.yml` 同步配置。
+- Verify 工作流新增 `_write_verify_status()`：`init_context_node` 写初始状态，`finalize_node` 写完成标记。
+- Parser 超时后读 `VerifyStatus_iter{n}.json`：completed → 从文件恢复 VerifyRpt；running → 提示重试；无文件 → INFRA_ERROR。
+
+## 集成测试结果
+
+- `test_host_workflow.py`：6/6 PASS（含 retry 闭环）。
+- `test_fuzzy_requirement_workflow.py`（LLM 模式）：251s 完成，Verify PASS。
+- 层级 HDL smoke：3 文件生成 + rtl_paths 传递验证通过。
