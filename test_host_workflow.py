@@ -75,7 +75,7 @@ def run_pass_case(url):
     payload = _disable_llm({
         "top_module": "seq_done_logic",
         "raw_input_text": "Please fix the bugs and generate a simple sequential done logic module",
-        "refined_requirements": ["reset to 0", "otherwise 1"],
+        "refined_requirements": ["reset to 0", "otherwise 1", "AGVS4RTL_INJECT_PASS_ONCE"],
         "max_iterations": 2,
     })
 

@@ -277,10 +277,8 @@ def _apply_fix_from_verify_rpt(spec_reg: SpecReg, verify_rpt: VerifyRpt) -> Spec
     """
     Apply minimal repair to SpecReg based on VerifyRpt error details.
 
-    Handles 3 concrete mismatch types from PortMismatch detail field:
-    1. "port direction mismatch" → fix port direction
-    2. "port width mismatch" → fix port width
-    3. "missing" / "unexpected" → add/remove port
+    Handles 1 concrete mismatch type from PortMismatch detail field:
+    1. "missing" / "unexpected" → add/remove port
     """
     port_map = {p.name: p for p in spec_reg.ports}
     updated_ports = list(spec_reg.ports)
@@ -288,44 +286,7 @@ def _apply_fix_from_verify_rpt(spec_reg: SpecReg, verify_rpt: VerifyRpt) -> Spec
     for mismatch in verify_rpt.error_details.mismatched_ports:
         detail = mismatch.detail or ""
 
-        if "port direction mismatch" in detail:
-            target_name = mismatch.expected_port
-            if target_name in port_map:
-                port = port_map[target_name]
-                if "actual input" in detail:
-                    corrected_dir = PortDirection.INPUT
-                elif "actual output" in detail:
-                    corrected_dir = PortDirection.OUTPUT
-                elif "actual inout" in detail:
-                    corrected_dir = PortDirection.INOUT
-                else:
-                    corrected_dir = (
-                        PortDirection.OUTPUT
-                        if port.direction == PortDirection.INPUT
-                        else PortDirection.INPUT
-                    )
-
-                updated_ports = [
-                    p.model_copy(update={"direction": corrected_dir})
-                    if p.name == target_name
-                    else p
-                    for p in updated_ports
-                ]
-
-        elif "port width mismatch" in detail:
-            target_name = mismatch.expected_port
-            if target_name in port_map:
-                width_match = re.search(r"actual\s+(\S+)", detail)
-                if width_match:
-                    actual_width = width_match.group(1)
-                    updated_ports = [
-                        p.model_copy(update={"width": actual_width})
-                        if p.name == target_name
-                        else p
-                        for p in updated_ports
-                    ]
-
-        elif "missing" in detail:
+        if "missing" in detail:
             if "unexpected" in detail:
                 new_port = PortDef(
                     name=mismatch.actual_port or mismatch.expected_port,
@@ -341,6 +302,51 @@ def _apply_fix_from_verify_rpt(spec_reg: SpecReg, verify_rpt: VerifyRpt) -> Spec
             "refactor_label": verify_rpt.suggested_refactor_level(),
         }
     )
+
+
+def _build_hierarchical_spec_reg(
+    task, user_task_spec, verify_rpt,
+) -> SpecReg:
+    """生成层次化 SpecReg，包含 INSTANCE 节点及 source_file 映射。"""
+    module_description = f"Hierarchical SpecReg for {task.top_module}"
+    if verify_rpt is not None:
+        module_description += f" (regenerated after {verify_rpt.verdict})"
+    return SpecReg(
+        task_id=task.task_id, iteration=task.iteration, intent=task.intent,
+        top_module=task.top_module, source_stage=ArtifactSourceStage.ARCHITECT,
+        module_description=module_description,
+        verification_directives=["Check sub-module instantiation chains"],
+        functional_requirements=user_task_spec.refined_requirements,
+        ports=_derive_ports_from_task_spec(task, user_task_spec),
+        clock_and_reset=[ClockResetDef(clock_name="i_clk", reset_name="i_rst_n", reset_type=ResetType.ASYNC_LOW)],
+        nodes=[
+            RtlNode(node_id="u_counter", node_type=NodeType.INSTANCE, module_name="counter",
+                     source_file="counter.v", description="Simple counter sub-module", is_leaf=False),
+            RtlNode(node_id="u_comparator", node_type=NodeType.INSTANCE, module_name="comparator",
+                     source_file="comparator.v", description="Value comparator sub-module", is_leaf=False),
+        ],
+        edges=[
+            RtlEdge(source=EndpointRef(node_id="TOP", port_name="i_clk"),
+                     target=EndpointRef(node_id="u_counter", port_name="clk"), signal_name="clk", width="1"),
+            RtlEdge(source=EndpointRef(node_id="TOP", port_name="i_rst_n"),
+                     target=EndpointRef(node_id="u_counter", port_name="rst_n"), signal_name="rst_n", width="1"),
+            RtlEdge(source=EndpointRef(node_id="u_counter", port_name="count"),
+                     target=EndpointRef(node_id="u_comparator", port_name="value"), signal_name="count_val", width="8"),
+            RtlEdge(source=EndpointRef(node_id="u_comparator", port_name="done"),
+                     target=EndpointRef(node_id="TOP", port_name="o_done"), signal_name="o_done", width="1"),
+        ],
+    )
+
+
+def _is_hierarchical_request(task, user_task_spec=None) -> bool:
+    """判断是否应生成层次化设计。"""
+    if "hier" in task.top_module.lower():
+        return True
+    if user_task_spec is not None:
+        combined = " ".join(user_task_spec.refined_requirements + user_task_spec.design_rules)
+        if "AGVS4RTL_INJECT_HIERARCHICAL" in combined:
+            return True
+    return False
 
 
 def _build_dummy_spec_reg(
@@ -860,11 +866,13 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
             )
             return {"spec_reg": spec_reg, "llm_transcripts": [llm_transcript]}
         except Exception as exc:  # noqa: BLE001
-            fallback_spec_reg = _build_dummy_spec_reg(
-                task=task,
+            fallback_spec_reg = (
+                _build_hierarchical_spec_reg(task=task, user_task_spec=user_task_spec, verify_rpt=verify_rpt)
+                if _is_hierarchical_request(task, user_task_spec)
+                else _build_dummy_spec_reg(task=task,
                 user_task_spec=user_task_spec,
                 verify_rpt=verify_rpt,
-            )
+            ))
             # Apply repair from VerifyRpt if available
             if verify_rpt is not None and verify_rpt.error_details.mismatched_ports:
                 fallback_spec_reg = _apply_fix_from_verify_rpt(fallback_spec_reg, verify_rpt)
@@ -886,11 +894,13 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
             "Enable LLM (set llm_config.enabled=True) or use AGVS4RTL_INJECT_* markers for test mode."
         )
 
-    spec_reg = _build_dummy_spec_reg(
-        task=task,
+    spec_reg = (
+        _build_hierarchical_spec_reg(task=task, user_task_spec=user_task_spec, verify_rpt=verify_rpt)
+        if _is_hierarchical_request(task, user_task_spec)
+        else _build_dummy_spec_reg(task=task,
         user_task_spec=user_task_spec,
         verify_rpt=verify_rpt,
-    )
+    ))
 
     # Apply repair from VerifyRpt if available
     if verify_rpt is not None and verify_rpt.error_details.mismatched_ports:
@@ -1034,6 +1044,7 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
         spec_file_path=str(spec_file_path),
         rtl_path=str(rtl_path),
         summary=summary,
+        rtl_paths=[str(rtl_path)] + sub_module_paths if sub_module_paths else None,
     )
 
     return {"gen_output": gen_output}
