@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}AGVS4RTL — Task History{% endblock %}
+{% block content %}
+
+{% set current_page = request.query_params.get('page', '1')|int %}
+
+<h1>Task History</h1>
+
+{% if error_msg %}
+<article class="flash-error" role="alert">{{ error_msg }}</article>
+{% endif %}
+
+{% if tasks %}
+    <p>{{ tasks|length }} tasks shown</p>
+
+    <div id="task-list">
+    {% for task in tasks %}
+        <a href="/tasks/{{ task.task_id }}" class="task-card">
+            <div>
+                <strong>{{ task.top_module }}</strong>
+                <code style="font-size:0.8rem; margin-left:0.5rem;">{{ task.task_id[:32] }}...</code>
+            </div>
+            <div class="task-meta">
+                <span>
+                    {% if task.final_stage == "archive_success" %}
+                        <span class="status-badge status-pass">PASS</span>
+                    {% elif task.final_stage == "archive_failed" %}
+                        <span class="status-badge status-fail">FAIL</span>
+                    {% elif task.final_stage %}
+                        <span class="status-badge status-running">{{ task.final_stage }}</span>
+                    {% else %}
+                        <span class="status-badge status-pending">RUNNING</span>
+                    {% endif %}
+
+                    {% if task.intent %}
+                        <small>{{ task.intent }}</small>
+                    {% endif %}
+                </span>
+                <small>{{ task.created_at[:19] if task.created_at else "" }}</small>
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+
+    {# Pagination controls #}
+    {% if current_page > 1 or tasks|length >= 20 %}
+    <nav style="display:flex; justify-content:space-between; margin-top:1rem;">
+        {% if current_page > 1 %}
+        <a href="?page={{ current_page - 1 }}"
+           role="button"
+           class="secondary"
+           hx-get="?page={{ current_page - 1 }}"
+           hx-target="main"
+           hx-push-url="true">
+            &larr; Previous
+        </a>
+        {% else %}
+        <span></span>
+        {% endif %}
+
+        {% if tasks|length >= 20 %}
+        <a href="?page={{ current_page + 1 }}"
+           role="button"
+           class="secondary"
+           hx-get="?page={{ current_page + 1 }}"
+           hx-target="main"
+           hx-push-url="true">
+            Next &rarr;
+        </a>
+        {% else %}
+        <span></span>
+        {% endif %}
+    </nav>
+    {% endif %}
+
+{% else %}
+    <article>
+        <h3>No tasks yet</h3>
+        <p>Get started by submitting your first RTL generation task!</p>
+        <a href="/" role="button">Submit a Task</a>
+    </article>
+{% endif %}
+
+{% endblock %}

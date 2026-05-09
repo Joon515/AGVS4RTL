@@ -898,6 +898,88 @@ class WorkflowRunResult(StrictBaseModel):
 
 
 # ==========================================
+# 9. Frontend API response models
+# ==========================================
+
+
+class TaskListItem(StrictBaseModel):
+    """Task summary item for list endpoint."""
+    task_id: str = Field(..., description="任务 ID")
+    top_module: str = Field(..., description="顶层模块名")
+    intent: Optional[str] = Field(default=None, description="任务意图")
+    created_at: str = Field(..., description="任务创建时间 ISO 字符串")
+    final_stage: Optional[str] = Field(default=None, description="最终阶段")
+    success: Optional[bool] = Field(default=None, description="是否成功")
+
+    @field_validator("task_id", "top_module", "created_at")
+    @classmethod
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"TaskListItem.{info.field_name}")
+
+
+class TaskListResponse(StrictBaseModel):
+    """Paginated task list response."""
+    tasks: List[TaskListItem] = Field(default_factory=list, description="任务列表")
+    total: int = Field(..., ge=0, description="任务总数")
+    page: int = Field(..., ge=1, description="当前页码")
+    per_page: int = Field(..., ge=1, le=100, description="每页数量")
+
+
+class TaskDetailResponse(StrictBaseModel):
+    """Single task detail with artifact paths."""
+    task_id: str = Field(..., description="任务 ID")
+    top_module: str = Field(..., description="顶层模块名")
+    intent: Optional[str] = Field(default=None, description="任务意图")
+    created_at: str = Field(..., description="任务创建时间")
+    final_stage: Optional[str] = Field(default=None, description="最终阶段")
+    success: Optional[bool] = Field(default=None, description="是否成功")
+    max_iterations: int = Field(..., ge=1, description="最大迭代轮次")
+    artifact_paths: Dict[str, Optional[str]] = Field(
+        default_factory=dict,
+        description="产物路径字典: spec_reg, rtl, verify_rpt, testbench, makefile"
+    )
+    trace_summary: List[str] = Field(default_factory=list, description="执行轨迹摘要")
+
+    @field_validator("task_id", "top_module", "created_at")
+    @classmethod
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"TaskDetailResponse.{info.field_name}")
+
+
+class TaskStatusResponse(StrictBaseModel):
+    """Real-time task status for polling."""
+    task_id: str = Field(..., description="任务 ID")
+    stage: str = Field(..., description="当前阶段: initializing/generating/verifying/retrying/completed/failed")
+    iteration: int = Field(default=0, ge=0, description="当前迭代轮次")
+    verdict: Optional[str] = Field(default=None, description="验证判决")
+    progress_pct: int = Field(default=0, ge=0, le=100, description="预估进度 0-100")
+
+    @field_validator("task_id", "stage")
+    @classmethod
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"TaskStatusResponse.{info.field_name}")
+
+
+class ServiceHealthItem(StrictBaseModel):
+    """Per-service health status."""
+    service: str = Field(..., description="服务名: parser/gen/verify")
+    state: str = Field(..., description="状态: ready/degraded/unreachable")
+    detail: str = Field(..., description="状态详情")
+    reachable: bool = Field(..., description="是否可达")
+
+    @field_validator("service", "state", "detail")
+    @classmethod
+    def validate_non_empty(cls, v: str, info) -> str:
+        return _validate_non_empty_str(v, f"ServiceHealthItem.{info.field_name}")
+
+
+class ServicesHealthResponse(StrictBaseModel):
+    """Aggregate health of all backend services."""
+    services: List[ServiceHealthItem] = Field(..., min_length=1, description="各服务健康状态")
+    all_healthy: bool = Field(..., description="是否全部健康")
+
+
+# ==========================================
 # 注入标记常量 (用于测试/开发)
 # ==========================================
 

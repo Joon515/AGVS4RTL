@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}AGVS4RTL — Submit Task{% endblock %}
+{% block content %}
+
+<h1>New RTL Generation Task</h1>
+<p>Describe your RTL module in natural language and submit it to the multi-agent pipeline.</p>
+
+<form hx-post="/tasks/submit" hx-target="#result" hx-swap="outerHTML" hx-indicator="#spinner">
+
+    <fieldset>
+        <label>
+            Module Name
+            <input type="text" name="top_module"
+                   placeholder="e.g. counter, alu, fifo"
+                   required
+                   pattern="[A-Za-z_][A-Za-z0-9_]*"
+                   title="Valid Verilog identifier (letters, digits, underscores)">
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <label>
+            Design Description
+            <textarea name="raw_input_text"
+                      placeholder="Describe your RTL module in natural language. Example: A synchronous 8-bit counter with enable and asynchronous reset..."
+                      rows="6"
+                      required></textarea>
+        </label>
+    </fieldset>
+
+    <div class="grid">
+        <label>
+            Max Iterations
+            <input type="number" name="max_iterations" value="2" min="1" max="10">
+            <small>How many retry attempts on failure (1-10)</small>
+        </label>
+
+        <label>
+            Intent
+            <select name="intent">
+                <option value="">Auto-detect</option>
+                <option value="GEN_WITH_TEST">Generate + Test</option>
+                <option value="GEN_ONLY">Generate Only</option>
+                <option value="MODIFY_EXISTING">Modify Existing</option>
+                <option value="FIX_BUG">Fix Bug</option>
+                <option value="VERIFY_ONLY">Verify Only</option>
+            </select>
+        </label>
+    </div>
+
+    <details>
+        <summary>LLM Settings (optional)</summary>
+        <div class="grid" style="margin-top: 1rem;">
+            <label>
+                Enable LLM
+                <select name="llm_enabled">
+                    <option value="false">No (deterministic templates)</option>
+                    <option value="true">Yes (LLM-driven generation)</option>
+                </select>
+            </label>
+            <label>
+                LLM Model
+                <input type="text" name="llm_model"
+                       placeholder="e.g. gpt-4, claude-3-opus"
+                       value="">
+            </label>
+        </div>
+    </details>
+
+    <div style="display:flex; align-items:center; gap:1rem;">
+        <button type="submit">Submit Task</button>
+        <div id="spinner" class="htmx-indicator" aria-busy="true">
+            Submitting task&hellip;
+        </div>
+    </div>
+</form>
+
+<div id="result" style="margin-top: 2rem;"></div>
+
+{% endblock %}

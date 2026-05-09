@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}AGVS4RTL — Task {{ task_id }}{% endblock %}
+{% block content %}
+
+<h1>Task: <code>{{ task_id }}</code></h1>
+
+{% if error_msg %}
+<article class="flash-error" role="alert">{{ error_msg }}</article>
+{% endif %}
+
+{% if task %}
+    <div class="grid" style="margin-bottom: 1.5rem;">
+        <div>
+            <strong>Module:</strong> {{ task.top_module }}<br>
+            <strong>Intent:</strong> {{ task.intent or "auto" }}<br>
+            <strong>Created:</strong> {{ task.created_at[:19] if task.created_at else "N/A" }}
+        </div>
+        <div>
+            <strong>Max Iterations:</strong> {{ task.max_iterations }}<br>
+            {% if task.final_stage %}
+                <strong>Final Stage:</strong>
+                <span class="status-badge {% if task.success %}status-pass{% else %}status-fail{% endif %}">
+                    {{ task.final_stage }}
+                </span><br>
+                <strong>Result:</strong>
+                <span>{% if task.success %}✅ Success{% elif task.success is false %}❌ Failed{% else %}⏳ Unknown{% endif %}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Live status section (polled every 2s) -->
+    <div hx-get="/tasks/{{ task_id }}/status-fragment"
+         hx-trigger="every 2s"
+         hx-swap="innerHTML"
+         id="live-status">
+        <div class="htmx-indicator" aria-busy="true">
+            Loading status...
+        </div>
+    </div>
+
+    {% if task.iteration_history %}
+    <h2 style="margin-top: 2rem;">Iteration History</h2>
+    <table>
+        <thead>
+            <tr><th>#</th><th>Stage</th><th>Verdict</th></tr>
+        </thead>
+        <tbody>
+            {% for it in task.iteration_history %}
+            <tr>
+                <td>{{ it.iteration }}</td>
+                <td>
+                    <span class="status-badge
+                        {% if it.stage == 'completed' %}status-pass
+                        {% elif it.stage == 'failed' %}status-fail
+                        {% else %}status-pending{% endif %}">
+                        {{ it.stage }}
+                    </span>
+                </td>
+                <td>{{ it.verdict or "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Result section -->
+    {% if task.artifact_paths %}
+    <h2 style="margin-top: 2rem;">Results</h2>
+    <table>
+        <thead>
+            <tr><th>Artifact</th><th>Path</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>SpecReg</td><td><code>{{ task.artifact_paths.spec_reg or "N/A" }}</code></td></tr>
+            <tr><td>RTL</td><td><code>{{ task.artifact_paths.rtl or "N/A" }}</code></td></tr>
+            <tr><td>Verify Report</td><td><code>{{ task.artifact_paths.verify_rpt or "N/A" }}</code></td></tr>
+            <tr><td>Testbench</td><td><code>{{ task.artifact_paths.testbench or "N/A" }}</code></td></tr>
+            <tr><td>Makefile</td><td><code>{{ task.artifact_paths.makefile or "N/A" }}</code></td></tr>
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if task.trace_summary %}
+    <h2 style="margin-top: 2rem;">Execution Trace</h2>
+    <ul>
+        {% for step in task.trace_summary %}
+        <li>{{ step }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+{% else %}
+    <article>
+        <p>Task not found or no data available.</p>
+        <a href="/tasks">← Back to Task List</a>
+    </article>
+{% endif %}
+
+{% endblock %}

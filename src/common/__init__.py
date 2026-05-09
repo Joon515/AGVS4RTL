@@ -49,6 +49,13 @@ from src.common.models import (
     VerifyNodeOutput,
     WorkflowTraceStep,
     WorkflowRunResult,
+    # --- Frontend API models ---
+    TaskListItem,
+    TaskListResponse,
+    TaskDetailResponse,
+    TaskStatusResponse,
+    ServiceHealthItem,
+    ServicesHealthResponse,
     # --- Utility functions ---
     generate_global_task_id,
     build_task_paths,
@@ -109,6 +116,13 @@ __all__ = [
     "VerifyNodeOutput",
     "WorkflowTraceStep",
     "WorkflowRunResult",
+    # --- Frontend API models ---
+    "TaskListItem",
+    "TaskListResponse",
+    "TaskDetailResponse",
+    "TaskStatusResponse",
+    "ServiceHealthItem",
+    "ServicesHealthResponse",
     # --- Utility functions ---
     "generate_global_task_id",
     "build_task_paths",

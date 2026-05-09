@@ -1,0 +1,36 @@
+<div class="grid">
+    {% if services %}
+        {% for svc in services %}
+        <div class="service-card {{ 'reachable' if svc.reachable else 'unreachable' }}">
+            <div class="service-name">
+                {% if svc.service == "parser" %}🔷 Parser
+                {% elif svc.service == "generator" %}⚙️ Generator
+                {% elif svc.service == "verify" %}✅ Verify
+                {% elif svc.service == "frontend" %}🖥️ Frontend
+                {% else %}{{ svc.service }}{% endif %}
+            </div>
+            <div>
+                {% if svc.reachable %}
+                    <span class="status-badge status-pass">Ready</span>
+                {% else %}
+                    <span class="status-badge status-fail">Unreachable</span>
+                {% endif %}
+            </div>
+            <small style="color: #6c757d;">{{ svc.detail }}</small>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="service-card unreachable">
+            <div class="service-name">No data</div>
+            <span class="status-badge status-fail">Unavailable</span>
+            <small>Parser may be unreachable</small>
+        </div>
+    {% endif %}
+</div>
+
+{% if services %}
+    <small style="color: #6c757d; margin-top: 1rem; display: block;">
+        {% set healthy = services | selectattr("reachable", "true") | list %}
+        {{ healthy | length }}/{{ services | length }} services healthy
+    </small>
+{% endif %}

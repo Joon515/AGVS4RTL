@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AGVS4RTL{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul>
+                <li><a href="/"><strong>⚡ AGVS4RTL</strong></a></li>
+            </ul>
+            <ul>
+                <li><a href="/">Submit</a></li>
+                <li><a href="/tasks">Tasks</a></li>
+                <li><a href="/services">Services</a></li>
+                <li><a href="/config">Config</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        {% if flash_success %}
+        <article class="flash-success" role="alert">
+            {{ flash_success }}
+        </article>
+        {% endif %}
+        {% if flash_error %}
+        <article class="flash-error" role="alert">
+            {{ flash_error }}
+        </article>
+        {% endif %}
+        {% if error_msg %}
+        <article class="flash-error" role="alert">
+            {{ error_msg }}
+        </article>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container" style="text-align:center; margin-top:3rem; opacity:0.6;">
+        <small>AGVS4RTL Web Console v0.1.0 &mdash; Multi-Agent RTL Gen &amp; Verify</small>
+    </footer>
+</body>
+</html>

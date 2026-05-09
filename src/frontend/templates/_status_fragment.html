@@ -1,0 +1,32 @@
+{% if status %}
+    <div>
+        <strong>Stage:</strong>
+        <span class="status-badge
+            {% if status.stage == 'completed' %}status-pass
+            {% elif status.stage == 'failed' %}status-fail
+            {% elif status.stage == 'retrying' %}status-running
+            {% else %}status-pending{% endif %}">
+            {{ status.stage }}
+        </span>
+
+        {% if status.verdict %}
+        <span class="status-badge
+            {% if status.verdict == 'PASS' %}status-pass
+            {% else %}status-fail{% endif %}">
+            {{ status.verdict }}
+        </span>
+        {% endif %}
+    </div>
+
+    <small>Iteration: {{ status.iteration }} | Progress: {{ status.progress_pct }}%</small>
+
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ status.progress_pct }}%;"></div>
+    </div>
+
+    {% if status.stage == 'completed' or status.stage == 'failed' %}
+    <small style="color: #6c757d;">Polling stopped (task finished)</small>
+    {% endif %}
+{% else %}
+    <small style="color: #6c757d;">Waiting for status data...</small>
+{% endif %}

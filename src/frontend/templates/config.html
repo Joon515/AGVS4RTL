@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}AGVS4RTL — Configuration{% endblock %}
+{% block content %}
+
+<h1>Configuration</h1>
+
+<article class="config-warning" role="alert">
+    ⚠️ <strong>Changes require service restart</strong> to take effect.
+    Run <code>docker compose restart</code> after saving.
+</article>
+
+<form hx-post="/config/save" hx-target="#config-result" hx-swap="innerHTML" hx-indicator="#config-spinner">
+
+    <!-- LLM Section -->
+    <h2>LLM Configuration</h2>
+
+    <div class="grid">
+        <label>
+            Enable LLM
+            <select name="agvs4rtl_llm_enabled">
+                <option value="true" {% if env_vars.get("AGVS4RTL_LLM_ENABLED") == "true" %}selected{% endif %}>Yes</option>
+                <option value="false" {% if env_vars.get("AGVS4RTL_LLM_ENABLED") != "true" %}selected{% endif %}>No</option>
+            </select>
+        </label>
+
+        <label>
+            LLM Model
+            <input type="text" name="agvs4rtl_llm_model"
+                   value="{{ env_vars.get('AGVS4RTL_LLM_MODEL', '') }}"
+                   placeholder="e.g. gpt-4, deepseek-v3">
+        </label>
+    </div>
+
+    <label>
+        LLM Base URL
+        <input type="text" name="agvs4rtl_llm_base_url"
+               value="{{ env_vars.get('AGVS4RTL_LLM_BASE_URL', '') }}"
+               placeholder="https://api.openai.com/v1">
+    </label>
+
+    <label>
+        LLM API Key
+        <input type="password" name="agvs4rtl_llm_api_key"
+               value="{% if env_vars.get('AGVS4RTL_LLM_API_KEY') %}••••••••{% endif %}"
+               placeholder="Leave empty to keep current key">
+        <small>API key is never displayed. Enter a new value to change it.</small>
+    </label>
+
+    <label>
+        LLM Profile
+        <input type="text" name="agvs4rtl_llm_profile"
+               value="{{ env_vars.get('AGVS4RTL_LLM_PROFILE', 'default') }}">
+    </label>
+
+    <!-- Timeout Section -->
+    <h2 style="margin-top: 2rem;">Timeout Settings</h2>
+
+    <div class="grid">
+        <label>
+            Verify Timeout (seconds)
+            <input type="number" name="verify_service_timeout_seconds"
+                   value="{{ env_vars.get('VERIFY_SERVICE_TIMEOUT_SECONDS', '240') }}"
+                   min="10" max="3600">
+            <small>Default: 240</small>
+        </label>
+
+        <label>
+            Generator Timeout (seconds)
+            <input type="number" name="gen_service_timeout_seconds"
+                   value="{{ env_vars.get('GEN_SERVICE_TIMEOUT_SECONDS', '600') }}"
+                   min="30" max="7200">
+            <small>Default: 600</small>
+        </label>
+
+        <label>
+            LLM Timeout (seconds)
+            <input type="number" name="agvs4rtl_llm_timeout_seconds"
+                   value="{{ env_vars.get('AGVS4RTL_LLM_TIMEOUT_SECONDS', '300') }}"
+                   min="30" max="3600">
+            <small>Default: 300</small>
+        </label>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:1rem; margin-top: 2rem;">
+        <button type="submit">Save Configuration</button>
+        <div id="config-spinner" class="htmx-indicator" aria-busy="true">
+            Saving...
+        </div>
+    </div>
+</form>
+
+<div id="config-result" style="margin-top: 1rem;"></div>
+
+{% endblock %}
