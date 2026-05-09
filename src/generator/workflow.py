@@ -125,6 +125,15 @@ def _build_system_messages(
     """
     messages: List[Dict[str, str]] = []
 
+    json_template = """{
+  "ports": [{"name": "i_data", "direction": "input", "net_type": "wire", "width": "32", "description": ""}],
+  "parameters": [{"name": "XLEN", "default_value": "32", "description": "data width"}],
+  "clock_and_reset": [{"clock_name": "clk", "reset_name": "rst_n", "reset_type": "ASYNC_LOW"}],
+  "protocols": [{"protocol_type": "AXI4", "role": "master", "port_mapping": {"data": "i_data"}, "description": ""}],
+  "nodes": [{"node_id": "u_alu", "node_type": "INSTANCE", "module_name": "alu", "source_file": "alu.v", "description": "", "is_leaf": false}],
+  "edges": [{"source": {"node_id": "TOP", "port_name": "i_clk"}, "target": {"node_id": "u_alu", "port_name": "clk"}, "signal_name": "clk", "width": "1", "description": ""}]
+}"""
+
     system_prompt = f"""You are an expert RTL architect and coding assistant.
 Your task is to generate a correct SpecReg and Verilog RTL implementation.
 
@@ -142,14 +151,7 @@ CRITICAL — You MUST output a JSON object that matches this EXACT structure.
 Replace placeholder values with actual design specifics. Do NOT add or remove fields.
 
 ```json
-{
-  "ports": [{"name": "i_data", "direction": "input", "net_type": "wire", "width": "32", "description": ""}],
-  "parameters": [{"name": "XLEN", "default_value": "32", "description": "data width"}],
-  "clock_and_reset": [{"clock_name": "clk", "reset_name": "rst_n", "reset_type": "ASYNC_LOW"}],
-  "protocols": [{"protocol_type": "AXI4", "role": "master", "port_mapping": {"data": "i_data"}, "description": ""}],
-  "nodes": [{"node_id": "u_alu", "node_type": "INSTANCE", "module_name": "alu", "source_file": "alu.v", "description": "", "is_leaf": false}],
-  "edges": [{"source": {"node_id": "TOP", "port_name": "i_clk"}, "target": {"node_id": "u_alu", "port_name": "clk"}, "signal_name": "clk", "width": "1", "description": ""}]
-}
+{json_template}
 ```
 
 RULES:
