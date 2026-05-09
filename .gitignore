@@ -8,3 +8,5 @@ Output/
 shared_workspace/
 .venv
 .sisyphus
+tests/__pycache__/
+tests/.pytest_cache/
