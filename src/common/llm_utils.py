@@ -86,7 +86,8 @@ def _call_openai_compatible_chat(
         "Content-Type": "application/json",
     }
 
-    with httpx.Client(timeout=120.0) as client:
+    llm_timeout = float(os.getenv("AGVS4RTL_LLM_TIMEOUT_SECONDS", "300"))
+    with httpx.Client(timeout=llm_timeout) as client:
         response = client.post(
             _chat_completions_url(llm_config.base_url),
             json=payload,

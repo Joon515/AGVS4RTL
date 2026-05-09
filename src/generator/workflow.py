@@ -137,6 +137,29 @@ Refined requirements:
 
 Design rules:
 {user_task_spec.design_rules}
+
+CRITICAL — You MUST output a JSON object that matches this EXACT structure.
+Replace placeholder values with actual design specifics. Do NOT add or remove fields.
+
+```json
+{
+  "ports": [{"name": "i_data", "direction": "input", "net_type": "wire", "width": "32", "description": ""}],
+  "parameters": [{"name": "XLEN", "default_value": "32", "description": "data width"}],
+  "clock_and_reset": [{"clock_name": "clk", "reset_name": "rst_n", "reset_type": "ASYNC_LOW"}],
+  "protocols": [{"protocol_type": "AXI4", "role": "master", "port_mapping": {"data": "i_data"}, "description": ""}],
+  "nodes": [{"node_id": "u_alu", "node_type": "INSTANCE", "module_name": "alu", "source_file": "alu.v", "description": "", "is_leaf": false}],
+  "edges": [{"source": {"node_id": "TOP", "port_name": "i_clk"}, "target": {"node_id": "u_alu", "port_name": "clk"}, "signal_name": "clk", "width": "1", "description": ""}]
+}
+```
+
+RULES:
+- All enum values are UPPERCASE: INSTANCE, COMBINATIONAL, SEQUENTIAL, INPUT, OUTPUT, INOUT, ASYNC_LOW, ASYNC_HIGH, SYNC_LOW, SYNC_HIGH
+- ports[].direction: "input" | "output" | "inout"
+- nodes[].node_type: "INSTANCE" | "COMBINATIONAL" | "SEQUENTIAL"
+- clock_and_reset[].reset_type: "ASYNC_LOW" | "ASYNC_HIGH" | "SYNC_LOW" | "SYNC_HIGH"
+- parameters are objects with name/default_value/description (NOT strings)
+- edges source/target are objects with node_id/port_name
+- DO NOT add fields not shown above
 """
     messages.append({"role": "system", "content": system_prompt})
 
@@ -623,8 +646,170 @@ def _ensure_text_list(value: Any) -> List[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
+# ==========================================
+# Preprocessing: field alias mapping, extra-field stripping, default injection
+# Defense-in-depth against LLM hallucinated field names
+# ==========================================
+
+_FIELD_ALIASES = {
+    # ParameterDef
+    "parameter": "default_value",
+    "value": "default_value",
+    # PortDef
+    "port_name": "name",
+    "dir": "direction",
+    "io_type": "direction",
+    "signal_type": "net_type",
+    "data_type": "net_type",
+    "bit_width": "width",
+    "size": "width",
+    # RtlNode — id/name->node_id and type->node_type already handled by existing normalization
+    "module": "module_name",
+    "source": "source_file",
+    "file": "source_file",
+    # ClockResetDef
+    "clk": "clock_name",
+    "rst": "reset_name",
+    "rst_n": "reset_name",
+    # Edge / EndpointRef
+    "from": "source",
+    "to": "target",
+    "wire_name": "signal_name",
+}
+
+
+def _apply_aliases(obj: Any, aliases: Dict[str, Any]) -> Any:
+    """Recursively rename keys in dicts/lists using the alias map."""
+    if isinstance(obj, dict):
+        result = {}
+        for k, v in obj.items():
+            target = aliases.get(k, k)
+            if target is not None:  # None means strip this field entirely
+                result[target] = _apply_aliases(v, aliases) if isinstance(v, (dict, list)) else v
+        return result
+    elif isinstance(obj, list):
+        return [_apply_aliases(item, aliases) for item in obj]
+    return obj
+
+
+# Known field sets per sub-model (from Pydantic StrictBaseModel with extra="forbid")
+_PORT_FIELDS = {"name", "direction", "net_type", "width", "clock_domain", "is_clock", "is_reset", "description"}
+_NODE_FIELDS = {"node_id", "node_type", "module_name", "source_file", "description", "is_leaf"}
+_CLOCK_FIELDS = {"clock_name", "reset_name", "reset_type"}
+_PARAM_FIELDS = {"name", "default_value", "description"}
+_PROTOCOL_FIELDS = {"protocol_type", "role", "port_mapping", "description"}
+_EDGE_FIELDS = {"source", "target", "signal_name", "width", "description"}
+_ENDPOINT_FIELDS = {"node_id", "port_name"}
+
+# Top-level SpecReg fields (BaseSyncMeta + SpecReg own fields) — not stripped
+_TOP_LEVEL_FIELDS = {
+    "task_id", "iteration", "refactor_label", "intent", "top_module",
+    "created_at", "source_stage", "module_description", "parameters",
+    "ports", "clock_and_reset", "protocols", "verification_directives",
+    "functional_requirements", "corner_cases", "illegal_conditions",
+    "latency_notes", "nodes", "edges",
+}
+
+
+def _strip_extra_fields(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip unknown fields from sub-objects to prevent extra_forbidden errors."""
+    result = dict(payload)
+
+    # Strip top-level extra fields
+    result = {k: v for k, v in result.items() if k in _TOP_LEVEL_FIELDS}
+
+    # Strip ports
+    result["ports"] = [
+        {k: v for k, v in p.items() if k in _PORT_FIELDS}
+        for p in result.get("ports", []) if isinstance(p, dict)
+    ]
+    # Strip nodes
+    result["nodes"] = [
+        {k: v for k, v in n.items() if k in _NODE_FIELDS}
+        for n in result.get("nodes", []) if isinstance(n, dict)
+    ]
+    # Strip parameters
+    result["parameters"] = [
+        {k: v for k, v in p.items() if k in _PARAM_FIELDS}
+        for p in result.get("parameters", []) if isinstance(p, dict)
+    ]
+    # Strip clock_and_reset
+    result["clock_and_reset"] = [
+        {k: v for k, v in c.items() if k in _CLOCK_FIELDS}
+        for c in result.get("clock_and_reset", []) if isinstance(c, dict)
+    ]
+    # Strip protocols
+    result["protocols"] = [
+        {k: v for k, v in p.items() if k in _PROTOCOL_FIELDS}
+        for p in result.get("protocols", []) if isinstance(p, dict)
+    ]
+    # Strip edges (source/target are EndpointRef sub-objects)
+    stripped_edges = []
+    for e in result.get("edges", []):
+        if not isinstance(e, dict):
+            continue
+        clean = {k: v for k, v in e.items() if k in _EDGE_FIELDS}
+        if "source" in clean and isinstance(clean["source"], dict):
+            clean["source"] = {k: v for k, v in clean["source"].items() if k in _ENDPOINT_FIELDS}
+        if "target" in clean and isinstance(clean["target"], dict):
+            clean["target"] = {k: v for k, v in clean["target"].items() if k in _ENDPOINT_FIELDS}
+        stripped_edges.append(clean)
+    result["edges"] = stripped_edges
+
+    return result
+
+
+# Smart defaults for fields the LLM frequently omits
+_DEFAULTS = {
+    "net_type": "wire",
+    "direction": "input",
+    "width": "1",
+    "is_clock": False,
+    "is_reset": False,
+    "description": "",
+    "is_leaf": False,
+    "clock_domain": None,
+}
+
+
+def _apply_defaults(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Inject defaults for fields that are optional but frequently omitted by LLM."""
+    for port in payload.get("ports", []):
+        if not isinstance(port, dict):
+            continue
+        for key, default in _DEFAULTS.items():
+            if key in _PORT_FIELDS:
+                port.setdefault(key, default)
+
+    for node in payload.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        node.setdefault("description", "")
+        node.setdefault("is_leaf", False)
+
+    for param in payload.get("parameters", []):
+        if not isinstance(param, dict):
+            continue
+        param.setdefault("description", "")
+
+    for edge in payload.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        edge.setdefault("width", "1")
+        edge.setdefault("description", "")
+
+    return payload
+
+
 def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = dict(spec_payload)
+    # === NEW: Preprocessing pipeline (defense-in-depth) ===
+    # Step 1: Apply field alias mapping
+    normalized = _apply_aliases(dict(spec_payload), _FIELD_ALIASES)
+    # Step 2: Strip unknown fields to prevent extra_forbidden errors
+    normalized = _strip_extra_fields(normalized)
+    # Step 3: Inject defaults for commonly omitted fields
+    normalized = _apply_defaults(normalized)
+    # === END preprocessing ===
 
     for field_name in [
         "verification_directives",
@@ -640,6 +825,16 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
     normalized.setdefault("clock_and_reset", [])
     normalized.setdefault("protocols", [])
 
+    # Part B: normalize parameters — LLM may output strings like "XLEN = 32" instead of objects
+    raw_params = normalized.get("parameters", [])
+    if raw_params and any(isinstance(p, str) for p in raw_params):
+        normalized["parameters"] = [
+            {"name": p.split("=")[0].strip(), "default_value": p.split("=")[1].strip(), "description": ""}
+            if isinstance(p, str) and "=" in p
+            else p
+            for p in raw_params
+        ]
+
     normalized_nodes = []
     for node in normalized.get("nodes") or []:
         if not isinstance(node, dict):
@@ -648,13 +843,23 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
         if not node_id:
             continue
         node_type = node.get("node_type") or node.get("type") or "combinational"
+        _NODE_TYPE_ALIASES = {
+            "module": "INSTANCE", "inst": "INSTANCE", "instance": "INSTANCE",
+            "comb": "COMBINATIONAL", "combinational": "COMBINATIONAL", "combinatorial": "COMBINATIONAL",
+            "seq": "SEQUENTIAL", "sequential": "SEQUENTIAL", "reg": "SEQUENTIAL", "register": "SEQUENTIAL",
+        }
+        # Check both node_type and type fields for aliasing (LLM may put "module" in either)
+        for raw_value in filter(None, [node.get("node_type"), node.get("type")]):
+            if str(raw_value).lower() in _NODE_TYPE_ALIASES:
+                node_type = _NODE_TYPE_ALIASES[str(raw_value).lower()]
+                break
         normalized_nodes.append(
             {
                 "node_id": node_id,
                 "node_type": node_type,
                 "module_name": node.get("module_name"),
                 "description": node.get("description", ""),
-                "is_leaf": node.get("is_leaf", node_type in {"combinational", "sequential"}),
+                "is_leaf": node.get("is_leaf", node_type.upper() in {"COMBINATIONAL", "SEQUENTIAL"}),
             }
         )
     normalized["nodes"] = normalized_nodes
@@ -676,6 +881,68 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
             continue
         normalized_edges.append(edge)
     normalized["edges"] = normalized_edges
+
+    # Part A0: normalize clock_and_reset STRING arrays (LLM may output ["clk: ...", "rst: ..."])
+    raw_crs = normalized.get("clock_and_reset", [])
+    if raw_crs and all(isinstance(cr, str) for cr in raw_crs):
+        # Pattern: "clk: global clock (posedge)" or "rst_n: active-low async reset"
+        normalized_crs = []
+        clocks = [cr for cr in raw_crs if "clock" in cr.lower()]
+        resets = [cr for cr in raw_crs if "reset" in cr.lower()]
+        for clk_str, rst_str in zip(clocks, resets):
+            clk_name = clk_str.split(":")[0].strip() if ":" in clk_str else clk_str.strip()
+            rst_name = rst_str.split(":")[0].strip() if ":" in rst_str else rst_str.strip()
+            rst_desc = rst_str.lower()
+            if "async" in rst_desc:
+                reset_type = "ASYNC_LOW" if "low" in rst_desc else "ASYNC_HIGH"
+            else:
+                reset_type = "SYNC_LOW" if "low" in rst_desc else "SYNC_HIGH"
+            normalized_crs.append({
+                "clock_name": clk_name,
+                "reset_name": rst_name,
+                "reset_type": reset_type,
+            })
+        if normalized_crs:
+            normalized["clock_and_reset"] = normalized_crs
+
+    # Part A: normalize clock_and_reset — LLM may output separate {name,type,polarity,domain} objects
+    raw_crs = normalized.get("clock_and_reset", [])
+    if raw_crs and not all("clock_name" in cr for cr in raw_crs if isinstance(cr, dict)):
+        normalized_crs = []
+        clocks = [cr for cr in raw_crs if isinstance(cr, dict) and cr.get("type", "").lower() == "clock"]
+        resets = [cr for cr in raw_crs if isinstance(cr, dict) and "reset" in cr.get("type", "").lower()]
+        for clk, rst in zip(clocks, resets):
+            reset_type = "ASYNC_LOW"
+            if rst.get("polarity", "").lower() == "active_high":
+                if rst.get("type", "").lower() == "async_reset":
+                    reset_type = "ASYNC_HIGH"
+                else:
+                    reset_type = "SYNC_HIGH"
+            elif rst.get("polarity", "").lower() == "active_low":
+                if rst.get("type", "").lower() == "async_reset":
+                    reset_type = "ASYNC_LOW"
+                else:
+                    reset_type = "SYNC_LOW"
+            normalized_crs.append({
+                "clock_name": clk.get("name", "clk"),
+                "reset_name": rst.get("name", "rst_n"),
+                "reset_type": reset_type,
+            })
+        if normalized_crs:
+            normalized["clock_and_reset"] = normalized_crs
+
+    # Part: normalize protocols — LLM may output strings like "AXI4: Master: ..."
+    raw_protocols = normalized.get("protocols", [])
+    if raw_protocols and all(isinstance(p, str) for p in raw_protocols):
+        normalized["protocols"] = [
+            {
+                "protocol_type": p.split(":")[0].strip() if ":" in p else p.strip(),
+                "role": p.split(":")[1].strip() if p.count(":") >= 2 else "generic",
+                "port_mapping": {"default": "default_port"},
+                "description": p.split(":", 2)[2].strip() if p.count(":") >= 2 else p,
+            }
+            for p in raw_protocols
+        ]
 
     return normalized
 
