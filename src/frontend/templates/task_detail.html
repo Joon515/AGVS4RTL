@@ -22,6 +22,9 @@
                 </span><br>
                 <strong>Result:</strong>
                 <span>{% if task.success %}✅ Success{% elif task.success is false %}❌ Failed{% else %}⏳ Unknown{% endif %}</span>
+                {% if task.success is false and task.final_stage %}
+                <span class="status-badge status-fail" style="margin-left:0.5rem;">ERROR</span>
+                {% endif %}
             {% endif %}
         </div>
     </div>
@@ -36,7 +39,11 @@
         </div>
     </div>
 
-
+    {% if task.final_stage == "crashed" %}
+    <div class="flash-error" style="margin-bottom:1rem;">
+        <strong>⚠️ Task Crashed</strong> — This task terminated unexpectedly. See execution trace below for details.
+    </div>
+    {% endif %}
 
     <!-- Result section -->
     {% if task.artifact_paths %}

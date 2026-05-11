@@ -26,8 +26,12 @@
                         <span class="status-badge status-pass">PASS</span>
                     {% elif task.final_stage == "archive_failed" %}
                         <span class="status-badge status-fail">FAIL</span>
+                    {% elif task.final_stage == "crashed" %}
+                        <span class="status-badge status-fail">CRASHED</span>
                     {% elif task.final_stage %}
                         <span class="status-badge status-running">{{ task.final_stage }}</span>
+                    {% elif task.final_stage is none and task.success is none %}
+                        <span class="status-badge status-pending">STARTING</span>
                     {% else %}
                         <span class="status-badge status-pending">RUNNING</span>
                     {% endif %}

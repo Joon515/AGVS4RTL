@@ -229,6 +229,9 @@ def _task_final_stage(output_dir: Path) -> str | None:
         return "archive_success"
     if archive_dir.exists():
         return "archive_failed"
+    error_path = output_dir / "error.json"
+    if error_path.exists():
+        return "crashed"
     return None
 
 
@@ -238,6 +241,9 @@ def _task_success(output_dir: Path) -> bool | None:
     if result_ws.exists():
         return True
     if archive_dir.exists():
+        return False
+    error_path = output_dir / "error.json"
+    if error_path.exists():
         return False
     return None
 
@@ -391,6 +397,15 @@ async def get_task_detail(task_id: str) -> ApiResponse[TaskDetailResponse]:
                         trace_summary.append(f"Iter {rp.name}: verdict={verdict}")
                     except Exception:
                         trace_summary.append(f"Iter {rp.name}: (unreadable)")
+
+        error_path = output_dir / "error.json"
+        if error_path.exists():
+            try:
+                error_data = json.loads(error_path.read_text(encoding="utf-8"))
+                error_msg = error_data.get("error", "unknown crash")
+                trace_summary.insert(0, f"❌ CRASH: {error_msg}")
+            except Exception:
+                trace_summary.insert(0, "❌ CRASH: (could not read error details)")
 
         return ApiResponse(
             status="success",
