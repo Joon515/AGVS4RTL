@@ -1,9 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AGVS4RTL{% endblock %}</title>
+    <script>
+    (function() {
+        var theme = localStorage.getItem("theme") || "light";
+        document.documentElement.setAttribute("data-theme", theme);
+    })();
+    </script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
@@ -15,10 +21,11 @@
                 <li><a href="/"><strong>⚡ AGVS4RTL</strong></a></li>
             </ul>
             <ul>
-                <li><a href="/">Submit</a></li>
-                <li><a href="/tasks">Tasks</a></li>
-                <li><a href="/services">Services</a></li>
-                <li><a href="/config">Config</a></li>
+                <li><a href="/" {% if request.url.path == "/" %}aria-current="page"{% endif %}>Submit</a></li>
+                <li><a href="/tasks" {% if request.url.path.startswith("/tasks") %}aria-current="page"{% endif %}>Tasks</a></li>
+                <li><a href="/services" {% if request.url.path.startswith("/services") %}aria-current="page"{% endif %}>Services</a></li>
+                <li><a href="/config" {% if request.url.path.startswith("/config") %}aria-current="page"{% endif %}>Config</a></li>
+                <li><button id="theme-toggle" onclick="toggleTheme()" style="background:none;border:1px solid var(--pico-muted-border-color);border-radius:4px;padding:0.25rem 0.5rem;cursor:pointer;" title="Toggle theme">🌓</button></li>
             </ul>
         </nav>
     </header>
@@ -46,5 +53,13 @@
     <footer class="container" style="text-align:center; margin-top:3rem; opacity:0.6;">
         <small>AGVS4RTL Web Console v0.1.0 &mdash; Multi-Agent RTL Gen &amp; Verify</small>
     </footer>
+    <script>
+    function toggleTheme() {
+        var current = document.documentElement.getAttribute("data-theme");
+        var next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("theme", next);
+    }
+    </script>
 </body>
 </html>
