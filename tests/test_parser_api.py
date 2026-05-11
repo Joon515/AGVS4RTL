@@ -1,5 +1,7 @@
 """Integration tests for new Parser API endpoints (Tasks 1-2)."""
 
+import time
+
 import httpx
 from src.common.models import (
     AGVS4RTL_INJECT_FAIL_SEMANTIC,
@@ -132,3 +134,59 @@ def test_regression_existing_workflow(parser_url, api_client, docker_services, u
     assert "success" in data
     assert "trace" in data
     assert isinstance(data["trace"], list)
+
+
+def test_gen_service_timeout_handled(
+    parser_url, api_client, docker_services, cleanup_workspace, unique_top_module, monkeypatch
+):
+    """Set short generator timeout, submit complex task, verify it reaches terminal state."""
+    monkeypatch.setenv("GEN_SERVICE_TIMEOUT_SECONDS", "5")
+
+    payload = {
+        "top_module": unique_top_module,
+        "raw_input_text": "rv32i processor",
+        "max_iterations": 1,
+    }
+    resp = api_client.post(f"{parser_url}/v1/workflow/run", json=payload, timeout=120.0)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "success"
+    task_id = body["data"]["task_id"]
+
+    deadline = time.time() + 60
+    terminal_stages = {"completed", "failed"}
+    last_stage = None
+    while time.time() < deadline:
+        resp = api_client.get(f"{parser_url}/v1/tasks/{task_id}/status", timeout=10.0)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        last_stage = data["stage"]
+        if last_stage in terminal_stages:
+            break
+        time.sleep(2)
+
+    assert last_stage in terminal_stages, (
+        f"Task did not reach terminal stage within 60s; last stage: {last_stage}"
+    )
+
+
+def test_services_health_correct_states(parser_url, api_client, docker_services):
+    """GET /v1/services/health returns correct state values per service."""
+    resp = api_client.get(f"{parser_url}/v1/services/health", timeout=30.0)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "success"
+    services = body["data"]["services"]
+    assert len(services) >= 3
+
+    valid_states = {"ready", "degraded", "unreachable"}
+    for svc in services:
+        assert "service" in svc
+        assert "reachable" in svc
+        if svc["reachable"]:
+            assert "state" in svc, (
+                f"Service {svc['service']} is reachable but has no state"
+            )
+            assert svc["state"] in valid_states, (
+                f"Service {svc['service']} has unexpected state: {svc['state']!r}"
+            )
