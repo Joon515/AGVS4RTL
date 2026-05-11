@@ -82,5 +82,6 @@ services:
       - ./src:/app/src
       - ./shared_workspace:/app/shared_workspace:rw
       - ./Output:/app/Output:rw
+      - ./.env:/app/.env:rw
     depends_on:
       - parser

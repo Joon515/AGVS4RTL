@@ -249,23 +249,17 @@ async def config_save(
         tmp_path.rename(env_path)
 
         logger.info("Configuration saved successfully")
-        return templates.TemplateResponse(
-            request,
-            "config.html",
-            {
-                "env_vars": existing,
-                "flash_success": "Configuration saved. Restart services for changes to take effect.",
-            },
+        return HTMLResponse(
+            '<div id="config-result" class="flash-success">'
+            "Configuration saved. Restart services for changes to take effect."
+            "</div>"
         )
     except Exception as exc:
         logger.error("Failed to save config: %s", exc, exc_info=True)
-        return templates.TemplateResponse(
-            request,
-            "config.html",
-            {
-                "env_vars": existing,
-                "flash_error": f"Failed to save: {exc}",
-            },
+        return HTMLResponse(
+            '<div id="config-result" class="flash-error">'
+            f"Failed to save: {exc}"
+            "</div>"
         )
 
 
