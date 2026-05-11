@@ -13,7 +13,7 @@
 {% if tasks %}
     <p>{{ tasks|length }} tasks shown</p>
 
-    <div id="task-list">
+    <div id="task-list" hx-get="?page={{ current_page }}" hx-trigger="every 10s" hx-swap="outerHTML">
     {% for task in tasks %}
         <a href="/tasks/{{ task.task_id }}" class="task-card">
             <div>

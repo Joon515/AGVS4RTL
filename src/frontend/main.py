@@ -274,6 +274,22 @@ async def submit_task(
     llm_enabled: str = Form(default="false"),
     llm_model: str = Form(default=""),
 ):
+    if not top_module or not top_module.strip():
+        return HTMLResponse(
+            '<div id="result" class="flash-error">Module name is required.</div>'
+        )
+    if not raw_input_text or not raw_input_text.strip():
+        return HTMLResponse(
+            '<div id="result" class="flash-error">Design description is required.</div>'
+        )
+    import re
+    if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', top_module):
+        return HTMLResponse(
+            '<div id="result" class="flash-error">'
+            f'Invalid module name "{top_module}". Must be a valid Verilog identifier (letters, digits, underscores, starting with letter or underscore).'
+            '</div>'
+        )
+
     try:
         payload: dict = {
             "top_module": top_module,
