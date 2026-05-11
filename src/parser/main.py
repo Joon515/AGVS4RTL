@@ -20,7 +20,7 @@ from src.common.models import (
     ServiceHealthItem,
     ServicesHealthResponse,
 )
-from src.parser.workflow import run_workflow
+from src.parser.workflow import run_workflow, build_task_paths, _ensure_task_directories
 
 
 # 配置日志
@@ -149,6 +149,35 @@ async def submit_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[dict]:
         )
 
         payload.task_id = task_id
+
+        # Pre-create task directory so GET endpoints find it immediately
+        task_paths = build_task_paths(
+            task_id=task_id,
+            output_root=payload.output_root,
+            shared_workspace_root=payload.shared_workspace_root,
+        )
+        _ensure_task_directories(task_paths)
+
+        # Write placeholder UserTaskSpec so the frontend task detail page renders immediately
+        placeholder_spec = {
+            "task_id": task_id,
+            "iteration": 0,
+            "intent": str(payload.intent) if payload.intent else "unknown",
+            "top_module": payload.top_module,
+            "created_at": "pending",
+            "source_stage": None,
+            "prompt_workspace_path": "",
+            "refined_requirements": payload.refined_requirements or [],
+            "workspace_dir": "",
+            "external_source_path": None,
+            "external_target_path": "",
+            "target_protocol": None,
+            "design_rules": [],
+        }
+        Path(task_paths.user_task_spec_path).write_text(
+            json.dumps(placeholder_spec, indent=2),
+            encoding="utf-8",
+        )
 
         asyncio.create_task(asyncio.to_thread(run_workflow, payload))
 
