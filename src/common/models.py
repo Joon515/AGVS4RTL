@@ -758,6 +758,7 @@ class ParserLlmAnalysis(StrictBaseModel):
 # ==========================================
 
 class WorkflowRunRequest(StrictBaseModel):
+    task_id: Optional[str] = Field(default=None, description="预生成的任务 ID，用于异步提交场景；为空时由 Parser 自动生成")
     intent: Optional[IntentCategory] = Field(default=None, description="工作流意图；为空时由 Parser 路由判定")
     top_module: str = Field(..., description="目标顶层模块名")
     refined_requirements: List[str] = Field(default_factory=list, description="提炼后的需求列表")

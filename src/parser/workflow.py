@@ -295,7 +295,7 @@ def parser_initialize_node(state: WorkflowState) -> Dict[str, Any]:
     7. 生成轻量任务载荷 WorkTaskPayload，供 Generator/Verify 调度使用。
     """
     request = state["request"]
-    task_id = generate_global_task_id()
+    task_id = request.task_id or generate_global_task_id()
     llm_config = _resolve_llm_config(request)
 
     # 基于统一路径工厂函数创建任务目录布局，避免散落的字符串拼接逻辑。

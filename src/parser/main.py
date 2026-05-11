@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Query
+import asyncio
 import logging
 import json
 import os
@@ -8,6 +9,7 @@ import httpx
 
 from src.common.models import (
     ApiResponse,
+    generate_global_task_id,
     HealthStatus,
     WorkflowRunRequest,
     WorkflowRunResult,
@@ -115,6 +117,54 @@ async def run_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[WorkflowR
         return ApiResponse(
             status="error",
             message=f"workflow failed: {exc}",
+            data=None,
+        )
+
+
+@app.post("/v1/workflow/submit", response_model=ApiResponse[dict])
+async def submit_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[dict]:
+    """
+    工作流异步提交入口。
+
+    输入：
+    - WorkflowRunRequest：包含顶层模块名、原始输入、输出目录、最大重试轮次等信息。
+
+    输出：
+    - ApiResponse[dict]：立即返回 task_id，工作流在后台异步执行。
+
+    说明：
+    - 该接口非阻塞，立即返回 task_id。
+    - 调用方可通过 GET /v1/tasks/{task_id} 和 GET /v1/tasks/{task_id}/status 查询任务状态。
+    """
+    try:
+        task_id = generate_global_task_id()
+
+        logger.info(
+            "收到工作流异步提交请求: top_module=%s, intent=%s, max_iterations=%s, output_root=%s, task_id=%s",
+            payload.top_module,
+            payload.intent,
+            payload.max_iterations,
+            payload.output_root,
+            task_id,
+        )
+
+        payload.task_id = task_id
+
+        asyncio.create_task(asyncio.to_thread(run_workflow, payload))
+
+        logger.info("工作流已提交至后台: task_id=%s", task_id)
+
+        return ApiResponse(
+            status="success",
+            message="task submitted",
+            data={"task_id": task_id},
+        )
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error("工作流提交失败: %s", exc, exc_info=True)
+        return ApiResponse(
+            status="error",
+            message=f"task submission failed: {exc}",
             data=None,
         )
 
