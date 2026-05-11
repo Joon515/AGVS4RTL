@@ -172,3 +172,23 @@
 - `test_host_workflow.py`：6/6 PASS（含 retry 闭环）。
 - `test_fuzzy_requirement_workflow.py`（LLM 模式）：251s 完成，Verify PASS。
 - 层级 HDL smoke：3 文件生成 + rtl_paths 传递验证通过。
+
+# 2026-05-11 (WebUI 交互修复)
+
+## 异步提交流程改造
+- Parser 新增 `POST /v1/workflow/submit` 异步端点，立即返回 task_id，后台执行 workflow。
+- `WorkflowRunRequest` 新增可选 `task_id` 字段，`parser_initialize_node` 优先使用预生成 ID。
+- 前端 `/tasks/submit` 改用异步端点 + `HX-Redirect` 自动跳转任务详情页。
+- 效果：提交任务后不再阻塞等待，用户切换页面不会终止任务。
+
+## 后端已知问题
+- 任务 `TASK_20260511T015920Z_1bfee507`（rv32i 处理器生成）失败：
+  - Parser 初始化成功（UserTaskSpec 已落盘），但 Generator 生成阶段未完成。
+  - Archive/ 和 Result/ 为空，shared_workspace/ 无产物。
+  - 疑似原因：rv32i 为复杂处理器，当前规则化 Generator 无法处理此规模模块，workflow 中途崩溃未走到归档阶段。
+  - 需后续调查：Generator 日志、错误处理是否完善、是否需要 LLM 模式。
+
+## WebUI 修复清单
+- 14 项交互修复：异步提交、轮询停止、分页目标、导航高亮、暗色主题、返回导航、API Key 掩码、列表刷新、Flash 消失、表单校验、一键重启、Config 持久化。
+- Config 双重栏修复：hx-swap 改为 outerHTML 避免嵌套重复 ID。
+- 测试：新增 tests/test_playwright_e2e.py（15 个 E2E 用例）。
