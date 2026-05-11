@@ -300,20 +300,21 @@ async def submit_task(
             }
 
         with _parser_client() as client:
-            resp = client.post("/v1/workflow/run", json=payload, timeout=600.0)
+            resp = client.post("/v1/workflow/submit", json=payload, timeout=10.0)
             if resp.status_code == 200:
                 body = resp.json()
                 if body.get("status") == "success":
-                    result = body.get("data", {})
-                    task_id = result.get("task_id", "unknown")
+                    task_id = body.get("data", {}).get("task_id", "unknown")
                     snippet = (
                         '<div id="result" class="flash-success">'
-                        f"<strong>Task submitted!</strong><br>"
-                        f'Task ID: <code>{task_id}</code><br>'
-                        f'<a href="/tasks/{task_id}">View Status →</a>'
+                        f"<strong>Task {task_id} submitted!</strong><br>"
+                        "Redirecting to task status page&hellip;"
                         "</div>"
                     )
-                    return HTMLResponse(snippet)
+                    return HTMLResponse(
+                        content=snippet,
+                        headers={"HX-Redirect": f"/tasks/{task_id}"},
+                    )
         return HTMLResponse(
             '<div id="result" class="flash-error">'
             "Submission failed. Check Parser logs."
