@@ -122,6 +122,7 @@ async def task_detail(request: Request, task_id: str):
 async def task_status_fragment(request: Request, task_id: str):
     """Return status HTML fragment for HTMX polling (every 2s)."""
     status = None
+    error_msg: str | None = None
     try:
         with _parser_client() as client:
             resp = client.get(f"/v1/tasks/{task_id}/status", timeout=10.0)
@@ -129,15 +130,18 @@ async def task_status_fragment(request: Request, task_id: str):
                 body = resp.json()
                 if body.get("status") == "success":
                     status = body.get("data")
-    except Exception:
-        logger.warning("Failed to poll task status for %s", task_id)
-        return templates.TemplateResponse("_status_fragment.html", {
-            "request": request,
-            "status": None,
-        })
+                else:
+                    error_msg = body.get("message", "Task not found")
+    except httpx.ConnectError as exc:
+        logger.error("Failed to connect to Parser while polling task %s: %s", task_id, exc, exc_info=True)
+        error_msg = "Parser unreachable"
+    except Exception as exc:
+        logger.warning("Failed to poll task status for %s: %s", task_id, exc, exc_info=True)
+        error_msg = f"Status check failed: {exc}"
     return templates.TemplateResponse("_status_fragment.html", {
         "request": request,
         "status": status,
+        "error_msg": error_msg,
     })
 
 
@@ -170,6 +174,7 @@ async def service_health(request: Request):
 async def services_fragment(request: Request):
     """Return services HTML fragment for HTMX polling (every 10s)."""
     services_data: list = []
+    error_msg: str | None = None
     try:
         with _parser_client() as client:
             resp = client.get("/v1/services/health", timeout=30.0)
@@ -177,11 +182,16 @@ async def services_fragment(request: Request):
                 body = resp.json()
                 if body.get("status") == "success":
                     services_data = body.get("data", {}).get("services", [])
-    except Exception:
-        logger.warning("Failed to poll services health")
+    except httpx.ConnectError as exc:
+        logger.error("Failed to connect to Parser while polling services: %s", exc, exc_info=True)
+        error_msg = "Parser unreachable"
+    except Exception as exc:
+        logger.warning("Failed to poll services health: %s", exc, exc_info=True)
+        error_msg = f"Services check failed: {exc}"
     return templates.TemplateResponse("_services_fragment.html", {
         "request": request,
         "services": services_data,
+        "error_msg": error_msg,
     })
 
 
@@ -283,7 +293,7 @@ async def config_restart(request: Request):
             logger.info("Services restarted successfully")
             return HTMLResponse(
                 '<div id="restart-result" class="flash-success">'
-                "Services restarted successfully. It may take a few seconds for all services to be ready."
+                "Restarted: parser, gen, verify, frontend. It may take a few seconds for services to be ready."
                 "</div>"
             )
         else:
@@ -296,7 +306,8 @@ async def config_restart(request: Request):
     except FileNotFoundError:
         return HTMLResponse(
             '<div id="restart-result" class="flash-error">'
-            "Docker command not found. Please restart services manually."
+            "Docker command not found. Please run: docker compose restart parser gen verify frontend. "
+            "It may take a few seconds for services to be ready."
             "</div>"
         )
     except subprocess.TimeoutExpired:

@@ -23,7 +23,11 @@
         <div class="service-card unreachable">
             <div class="service-name">No data</div>
             <span class="status-badge status-fail">Unavailable</span>
+            {% if error_msg %}
+            <small style="color: #dc3545;">{{ error_msg }}</small>
+            {% else %}
             <small>Parser may be unreachable</small>
+            {% endif %}
         </div>
     {% endif %}
 </div>

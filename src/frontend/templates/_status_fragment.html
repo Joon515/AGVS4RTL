@@ -1,12 +1,20 @@
-{% if status %}
-    {% if status.stage == 'completed' or status.stage == 'failed' %}
+{% if error_msg and not status %}
+    {# Backend/connection error — OOB replace element to stop polling #}
+    <div id="live-status" hx-swap-oob="outerHTML:#live-status">
+        <div>
+            <strong>Error:</strong> {{ error_msg }}
+        </div>
+        <small style="color: #dc3545;">Polling stopped (error)</small>
+    </div>
+{% elif status %}
+    {% if status.stage == 'completed' or status.stage == 'failed' or status.stage == 'error' or status.error_msg %}
     <div id="live-status" hx-swap-oob="outerHTML:#live-status">
     {% endif %}
     <div>
         <strong>Stage:</strong>
         <span class="status-badge
             {% if status.stage == 'completed' %}status-pass
-            {% elif status.stage == 'failed' %}status-fail
+            {% elif status.stage == 'failed' or status.stage == 'error' %}status-fail
             {% elif status.stage == 'retrying' %}status-running
             {% else %}status-pending{% endif %}">
             {{ status.stage }}
@@ -23,14 +31,21 @@
 
     <small>Iteration: {{ status.iteration }} | Progress: {{ status.progress_pct }}%</small>
 
+    {% if status.error_msg %}
+    <div class="error-detail" style="color: #dc3545; margin-top: 0.5rem;">
+        <strong>Error:</strong> {{ status.error_msg }}
+    </div>
+    {% endif %}
+
     <div class="progress-bar">
         <div class="progress-fill" style="width: {{ status.progress_pct | default(0) | int }}%;"></div>
     </div>
 
-    {% if status.stage == 'completed' or status.stage == 'failed' %}
-    <small style="color: #6c757d;">Polling stopped (task finished)</small>
+    {% if status.stage == 'completed' or status.stage == 'failed' or status.stage == 'error' or status.error_msg %}
+    <small style="color: #6c757d;">Polling stopped{% if status.stage == 'completed' or status.stage == 'failed' %} (task finished){% elif status.stage == 'error' or status.error_msg %} (error){% endif %}</small>
     </div>
     {% endif %}
 {% else %}
-    <small style="color: #6c757d;">Waiting for status data...</small>
+    {# Initial load — no data yet, continue polling #}
+    <small>Connecting...</small>
 {% endif %}
