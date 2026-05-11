@@ -168,7 +168,11 @@ def _call_parser_llm(
         "Content-Type": "application/json",
     }
 
-    with httpx.Client(timeout=60.0) as client:
+    try:
+        llm_timeout = float(os.getenv("AGVS4RTL_LLM_TIMEOUT_SECONDS", "300"))
+    except Exception:
+        llm_timeout = 300.0
+    with httpx.Client(timeout=llm_timeout) as client:
         response = client.post(_chat_completions_url(llm_config.base_url), json=payload, headers=headers)
         response.raise_for_status()
 
@@ -435,14 +439,45 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     try:
         gen_timeout = float(os.getenv("GEN_SERVICE_TIMEOUT_SECONDS", "240"))
     except Exception:
-        gen_timeout = 240.0
-    with httpx.Client(timeout=gen_timeout) as client:
-        response = client.post(
-            endpoint,
-            json=task.model_dump(mode="json"),
-            headers=_build_llm_forward_headers(request),
+        logging.getLogger(__name__).warning(
+            "Invalid GEN_SERVICE_TIMEOUT_SECONDS=%s, using default 240s",
+            os.getenv("GEN_SERVICE_TIMEOUT_SECONDS", ""),
         )
-        response.raise_for_status()
+        gen_timeout = 240.0
+    try:
+        with httpx.Client(timeout=gen_timeout) as client:
+            response = client.post(
+                endpoint,
+                json=task.model_dump(mode="json"),
+                headers=_build_llm_forward_headers(request),
+            )
+            response.raise_for_status()
+    except httpx.TimeoutException:
+        return {
+            "trace": [
+                WorkflowTraceStep(
+                    node="gen_stateless",
+                    status="error",
+                    detail="Generator service timed out",
+                    iteration=task.iteration,
+                )
+            ],
+            "final_stage": "archive_failed",
+            "success": False,
+        }
+    except httpx.HTTPStatusError as exc:
+        return {
+            "trace": [
+                WorkflowTraceStep(
+                    node="gen_stateless",
+                    status="error",
+                    detail=f"Generator service returned HTTP {exc.response.status_code}",
+                    iteration=task.iteration,
+                )
+            ],
+            "final_stage": "archive_failed",
+            "success": False,
+        }
 
     response_payload = response.json()
     if response_payload.get("status") != "success" or response_payload.get("data") is None:
@@ -498,6 +533,10 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     try:
         verify_timeout = float(os.getenv("VERIFY_SERVICE_TIMEOUT_SECONDS", "240"))
     except Exception:
+        logging.getLogger(__name__).warning(
+            "Invalid VERIFY_SERVICE_TIMEOUT_SECONDS=%s, using default 240s",
+            os.getenv("VERIFY_SERVICE_TIMEOUT_SECONDS", ""),
+        )
         verify_timeout = 240.0
 
     try:
@@ -806,7 +845,15 @@ def run_workflow(request: WorkflowRunRequest) -> WorkflowRunResult:
         "error": None,
     }
 
-    final_state = app.invoke(initial_state)
+    try:
+        final_state = app.invoke(initial_state)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Workflow execution failed")
+        return WorkflowRunResult(
+            success=False,
+            final_stage="workflow_error",
+            trace=[WorkflowTraceStep(node="workflow", status="error", detail=str(exc))],
+        )
     task = final_state.get("task")
     if task is None:
         raise RuntimeError("workflow ended without task payload")
