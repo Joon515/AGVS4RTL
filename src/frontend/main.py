@@ -210,6 +210,7 @@ async def config_save(
     agvs4rtl_llm_enabled: str = Form(default="false"),
     agvs4rtl_llm_base_url: str = Form(default=""),
     agvs4rtl_llm_api_key: str = Form(default=""),
+    agvs4rtl_llm_api_key_modified: str = Form(default="false"),
     agvs4rtl_llm_model: str = Form(default=""),
     agvs4rtl_llm_profile: str = Form(default="default"),
     verify_service_timeout_seconds: str = Form(default="240"),
@@ -235,7 +236,7 @@ async def config_save(
             "GEN_SERVICE_TIMEOUT_SECONDS": gen_service_timeout_seconds,
             "AGVS4RTL_LLM_TIMEOUT_SECONDS": agvs4rtl_llm_timeout_seconds,
         }
-        if agvs4rtl_llm_api_key and agvs4rtl_llm_api_key != "••••••••":
+        if agvs4rtl_llm_api_key_modified == "true" and agvs4rtl_llm_api_key:
             updates["AGVS4RTL_LLM_API_KEY"] = agvs4rtl_llm_api_key
 
         existing.update(updates)

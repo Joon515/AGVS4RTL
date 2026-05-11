@@ -50,7 +50,8 @@
            role="button"
            class="secondary"
            hx-get="?page={{ current_page - 1 }}"
-           hx-target="main"
+           hx-target="#task-list"
+           hx-swap="outerHTML"
            hx-push-url="true">
             &larr; Previous
         </a>
@@ -63,7 +64,8 @@
            role="button"
            class="secondary"
            hx-get="?page={{ current_page + 1 }}"
-           hx-target="main"
+           hx-target="#task-list"
+           hx-swap="outerHTML"
            hx-push-url="true">
             Next &rarr;
         </a>

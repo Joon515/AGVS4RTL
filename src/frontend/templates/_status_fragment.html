@@ -1,4 +1,7 @@
 {% if status %}
+    {% if status.stage == 'completed' or status.stage == 'failed' %}
+    <div id="live-status" hx-swap-oob="outerHTML:#live-status">
+    {% endif %}
     <div>
         <strong>Stage:</strong>
         <span class="status-badge
@@ -26,6 +29,7 @@
 
     {% if status.stage == 'completed' or status.stage == 'failed' %}
     <small style="color: #6c757d;">Polling stopped (task finished)</small>
+    </div>
     {% endif %}
 {% else %}
     <small style="color: #6c757d;">Waiting for status data...</small>

@@ -40,9 +40,11 @@
 
     <label>
         LLM API Key
+        <input type="hidden" name="agvs4rtl_llm_api_key_modified" value="false">
         <input type="password" name="agvs4rtl_llm_api_key"
                value="{% if env_vars.get('AGVS4RTL_LLM_API_KEY') %}••••••••{% endif %}"
-               placeholder="Leave empty to keep current key">
+               placeholder="Leave empty to keep current key"
+               oninput="this.form.agvs4rtl_llm_api_key_modified.value='true'">
         <small>API key is never displayed. Enter a new value to change it.</small>
     </label>
 
