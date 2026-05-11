@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 import asyncio
 import logging
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 
@@ -121,6 +122,21 @@ async def run_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[WorkflowR
         )
 
 
+def _run_workflow_with_error_handler(payload: WorkflowRunRequest, task_paths) -> None:
+    """Wrapper that runs workflow in background and handles crashes by writing error.json."""
+    try:
+        run_workflow(payload)
+    except Exception as exc:
+        logger.exception("Background workflow crashed: task_id=%s", payload.task_id)
+        error_info = {
+            "error": str(exc),
+            "stage": "crashed",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        error_path = Path(task_paths.output_task_dir) / "error.json"
+        error_path.write_text(json.dumps(error_info, indent=2), encoding="utf-8")
+
+
 @app.post("/v1/workflow/submit", response_model=ApiResponse[dict])
 async def submit_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[dict]:
     """
@@ -179,7 +195,7 @@ async def submit_workflow_api(payload: WorkflowRunRequest) -> ApiResponse[dict]:
             encoding="utf-8",
         )
 
-        asyncio.create_task(asyncio.to_thread(run_workflow, payload))
+        asyncio.create_task(asyncio.to_thread(_run_workflow_with_error_handler, payload, task_paths))
 
         logger.info("工作流已提交至后台: task_id=%s", task_id)
 
@@ -426,6 +442,21 @@ def _resolve_workspace(task_id: str) -> Path | None:
 
 def _task_status_from_ws(workspace: Path, task_id: str) -> TaskStatusResponse:
     """Infer task status from workspace directory contents."""
+    # Check for crash error.json first
+    error_path = Path(_OUTPUT_ROOT) / task_id / "error.json"
+    if error_path.exists():
+        try:
+            error_data = json.loads(error_path.read_text(encoding="utf-8"))
+        except Exception:
+            error_data = {"error": "unknown crash", "stage": "crashed"}
+        return TaskStatusResponse(
+            task_id=task_id,
+            stage="failed",
+            iteration=0,
+            verdict=error_data.get("error", "unknown crash"),
+            progress_pct=100,
+        )
+
     specs_dir = workspace / "specs"
     rtl_dir = workspace / "rtl"
     sim_dir = workspace / "sim"
@@ -545,8 +576,9 @@ def _check_service_health(service: str, url: str) -> ServiceHealthItem:
             resp = client.get(url, timeout=5.0)
             resp.raise_for_status()
             payload = resp.json()
-            state = payload.get("state", "ready")
-            detail = payload.get("detail", "OK")
+            data = payload.get("data", {})
+            state = data.get("state", "ready") if isinstance(data, dict) else "ready"
+            detail = data.get("detail", "OK") if isinstance(data, dict) else "OK"
             return ServiceHealthItem(
                 service=service,
                 state=state if state in ("ready", "degraded") else "ready",
