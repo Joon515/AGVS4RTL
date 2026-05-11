@@ -850,6 +850,7 @@ def run_workflow(request: WorkflowRunRequest) -> WorkflowRunResult:
     except Exception as exc:
         logging.getLogger(__name__).exception("Workflow execution failed")
         return WorkflowRunResult(
+            task_id=request.task_id or "unknown",
             success=False,
             final_stage="workflow_error",
             trace=[WorkflowTraceStep(node="workflow", status="error", detail=str(exc))],
