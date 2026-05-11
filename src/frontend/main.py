@@ -264,6 +264,53 @@ async def config_save(
         )
 
 
+@app.post("/config/restart")
+async def config_restart(request: Request):
+    """Restart all services via docker compose."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "restart", "parser", "gen", "verify", "frontend"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            logger.info("Services restarted successfully")
+            return HTMLResponse(
+                '<div id="restart-result" class="flash-success">'
+                "Services restarted successfully. It may take a few seconds for all services to be ready."
+                "</div>"
+            )
+        else:
+            logger.error("Restart failed: %s", result.stderr)
+            return HTMLResponse(
+                '<div id="restart-result" class="flash-error">'
+                f"Restart failed: {result.stderr[:200]}"
+                "</div>"
+            )
+    except FileNotFoundError:
+        return HTMLResponse(
+            '<div id="restart-result" class="flash-error">'
+            "Docker command not found. Please restart services manually."
+            "</div>"
+        )
+    except subprocess.TimeoutExpired:
+        return HTMLResponse(
+            '<div id="restart-result" class="flash-error">'
+            "Restart timed out. Services may still be restarting. Check docker compose ps."
+            "</div>"
+        )
+    except Exception as exc:
+        logger.error("Restart error: %s", exc)
+        return HTMLResponse(
+            '<div id="restart-result" class="flash-error">'
+            f"Restart error: {exc}"
+            "</div>"
+        )
+
+
 @app.post("/tasks/submit")
 async def submit_task(
     request: Request,

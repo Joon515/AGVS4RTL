@@ -61,5 +61,16 @@
         localStorage.setItem("theme", next);
     }
     </script>
+    <script>
+    // Auto-dismiss flash messages
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.flash-success, .flash-error').forEach(function(el) {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', function() { el.remove(); });
+            var timeout = el.classList.contains('flash-success') ? 5000 : 8000;
+            setTimeout(function() { el.remove(); }, timeout);
+        });
+    });
+    </script>
 </body>
 </html>

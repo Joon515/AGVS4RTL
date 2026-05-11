@@ -93,4 +93,22 @@
 
 <div id="config-result" style="margin-top: 1rem;"></div>
 
+<div style="margin-top:2rem; padding-top:1rem; border-top:1px solid var(--pico-muted-border-color);">
+    <h3>Service Management</h3>
+    <p>After saving configuration changes, restart services for them to take effect.</p>
+    <div style="display:flex; align-items:center; gap:1rem;">
+        <button hx-post="/config/restart"
+                hx-target="#restart-result"
+                hx-swap="innerHTML"
+                hx-indicator="#restart-spinner"
+                class="secondary">
+            Restart Services
+        </button>
+        <div id="restart-spinner" class="htmx-indicator" aria-busy="true">
+            Restarting services&hellip;
+        </div>
+    </div>
+    <div id="restart-result" style="margin-top:1rem;"></div>
+</div>
+
 {% endblock %}
