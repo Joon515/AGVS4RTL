@@ -40,12 +40,15 @@
 
     <label>
         LLM API Key
-        <input type="hidden" name="agvs4rtl_llm_api_key_modified" value="false">
         <input type="password" name="agvs4rtl_llm_api_key"
                value="{% if env_vars.get('AGVS4RTL_LLM_API_KEY') %}••••••••{% endif %}"
-               placeholder="Leave empty to keep current key"
-               oninput="this.form.agvs4rtl_llm_api_key_modified.value='true'">
-        <small>API key is never displayed. Enter a new value to change it.</small>
+               placeholder="Enter new key to change"
+               {% if env_vars.get('AGVS4RTL_LLM_API_KEY') %}disabled{% endif %}>
+        {% if env_vars.get('AGVS4RTL_LLM_API_KEY') %}
+        <small>A key is set. <a href="#" onclick="this.parentElement.previousElementSibling.disabled=false;this.parentElement.previousElementSibling.focus();this.remove();return false;">Click to change</a></small>
+        {% else %}
+        <small>Enter your API key</small>
+        {% endif %}
     </label>
 
     <label>
@@ -101,6 +104,8 @@
                 hx-target="#restart-result"
                 hx-swap="outerHTML"
                 hx-indicator="#restart-spinner"
+                hx-confirm="Are you sure you want to restart all services? This will cause temporary downtime."
+                hx-disabled-elt="this"
                 class="secondary">
             Restart Services
         </button>

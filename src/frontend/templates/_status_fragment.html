@@ -24,7 +24,7 @@
     <small>Iteration: {{ status.iteration }} | Progress: {{ status.progress_pct }}%</small>
 
     <div class="progress-bar">
-        <div class="progress-fill" style="width: {{ status.progress_pct }}%;"></div>
+        <div class="progress-fill" style="width: {{ status.progress_pct | default(0) | int }}%;"></div>
     </div>
 
     {% if status.stage == 'completed' or status.stage == 'failed' %}

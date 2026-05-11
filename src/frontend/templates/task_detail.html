@@ -17,7 +17,7 @@
             <strong>Max Iterations:</strong> {{ task.max_iterations }}<br>
             {% if task.final_stage %}
                 <strong>Final Stage:</strong>
-                <span class="status-badge {% if task.success %}status-pass{% else %}status-fail{% endif %}">
+                <span class="status-badge {% if task.success %}status-pass{% elif task.success is none %}status-pending{% else %}status-fail{% endif %}">
                     {{ task.final_stage }}
                 </span><br>
                 <strong>Result:</strong>
