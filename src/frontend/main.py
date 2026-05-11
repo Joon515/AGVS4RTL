@@ -344,9 +344,7 @@ async def submit_task(
         payload: dict = {
             "top_module": top_module,
             "raw_input_text": raw_input_text,
-            "max_iterations": max_iterations,
-            "output_root": "/app/Output",
-            "shared_workspace_root": "/app/shared_workspace",
+            "max_iterations": max_iterations
         }
         if intent:
             payload["intent"] = intent

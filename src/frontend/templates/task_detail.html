@@ -36,30 +36,7 @@
         </div>
     </div>
 
-    {% if task.iteration_history %}
-    <h2 style="margin-top: 2rem;">Iteration History</h2>
-    <table>
-        <thead>
-            <tr><th>#</th><th>Stage</th><th>Verdict</th></tr>
-        </thead>
-        <tbody>
-            {% for it in task.iteration_history %}
-            <tr>
-                <td>{{ it.iteration }}</td>
-                <td>
-                    <span class="status-badge
-                        {% if it.stage == 'completed' %}status-pass
-                        {% elif it.stage == 'failed' %}status-fail
-                        {% else %}status-pending{% endif %}">
-                        {{ it.stage }}
-                    </span>
-                </td>
-                <td>{{ it.verdict or "—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
+
 
     <!-- Result section -->
     {% if task.artifact_paths %}
