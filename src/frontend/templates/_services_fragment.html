@@ -30,7 +30,7 @@
 
 {% if services %}
     <small style="color: #6c757d; margin-top: 1rem; display: block;">
-        {% set healthy = services | selectattr("reachable", "true") | list %}
+        {% set healthy = services | selectattr("reachable") | list %}
         {{ healthy | length }}/{{ services | length }} services healthy
     </small>
 {% endif %}

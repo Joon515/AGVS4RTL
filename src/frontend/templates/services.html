@@ -4,10 +4,6 @@
 
 <h1>Service Health</h1>
 
-{% if error_msg %}
-<article class="flash-error" role="alert">{{ error_msg }}</article>
-{% endif %}
-
 <div hx-get="/services/fragment" hx-trigger="every 10s" hx-swap="innerHTML" id="services-container">
     {% include "_services_fragment.html" %}
 </div>

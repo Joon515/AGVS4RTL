@@ -1,16 +1,16 @@
 /* Flash messages */
 .flash-success {
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-    color: #155724;
+    background: var(--pico-ins-color);
+    border: 1px solid var(--pico-ins-border-color);
+    color: var(--pico-ins-label-color);
     padding: 0.75rem 1rem;
     border-radius: 4px;
     margin-bottom: 1rem;
 }
 .flash-error {
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
+    background: var(--pico-del-color);
+    border: 1px solid var(--pico-del-border-color);
+    color: var(--pico-del-label-color);
     padding: 0.75rem 1rem;
     border-radius: 4px;
     margin-bottom: 1rem;
@@ -24,24 +24,24 @@
     font-size: 0.85rem;
     font-weight: 600;
 }
-.status-pass { background: #d4edda; color: #155724; }
-.status-fail { background: #f8d7da; color: #721c24; }
-.status-running { background: #fff3cd; color: #856404; }
-.status-pending { background: #e2e3e5; color: #383d41; }
+.status-pass { background: var(--pico-ins-color); color: var(--pico-ins-label-color); }
+.status-fail { background: var(--pico-del-color); color: var(--pico-del-label-color); }
+.status-running { background: var(--pico-form-element-active-border-color); color: var(--pico-color); }
+.status-pending { background: var(--pico-muted-border-color); color: var(--pico-muted-color); }
 
 /* Task cards */
 .task-card {
     display: block;
     padding: 1rem;
     margin-bottom: 0.5rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--pico-muted-border-color);
     border-radius: 4px;
     text-decoration: none;
     color: inherit;
     transition: background 0.15s;
 }
 .task-card:hover {
-    background: #f8f9fa;
+    background: var(--pico-card-sectioning-background-color);
     text-decoration: none;
 }
 .task-card .task-meta {
@@ -50,21 +50,21 @@
     align-items: center;
     margin-top: 0.5rem;
     font-size: 0.85rem;
-    color: #6c757d;
+    color: var(--pico-muted-color);
 }
 
 /* Progress bar */
 .progress-bar {
     width: 100%;
     height: 8px;
-    background: #e9ecef;
+    background: var(--pico-muted-border-color);
     border-radius: 4px;
     overflow: hidden;
     margin: 0.5rem 0;
 }
 .progress-fill {
     height: 100%;
-    background: #007bff;
+    background: var(--pico-primary);
     border-radius: 4px;
     transition: width 0.5s ease;
 }
@@ -72,7 +72,7 @@
 /* Service card */
 .service-card {
     padding: 1.5rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--pico-muted-border-color);
     border-radius: 4px;
     margin-bottom: 1rem;
     text-align: center;
@@ -82,8 +82,8 @@
     font-weight: 600;
     margin-bottom: 0.5rem;
 }
-.service-card.reachable { border-left: 4px solid #28a745; }
-.service-card.unreachable { border-left: 4px solid #dc3545; opacity: 0.7; }
+.service-card.reachable { border-left: 4px solid var(--pico-ins-color); }
+.service-card.unreachable { border-left: 4px solid var(--pico-del-color); opacity: 0.7; }
 
 /* Spinner */
 .htmx-indicator {
@@ -99,9 +99,9 @@
 
 /* Config warning */
 .config-warning {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    color: #856404;
+    background: var(--pico-mark-background-color);
+    border: 1px solid var(--pico-mark-border-color);
+    color: var(--pico-mark-color);
     padding: 0.75rem 1rem;
     border-radius: 4px;
     margin-bottom: 1.5rem;

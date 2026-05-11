@@ -6,10 +6,6 @@
 
 <h1>Task History</h1>
 
-{% if error_msg %}
-<article class="flash-error" role="alert">{{ error_msg }}</article>
-{% endif %}
-
 {% if tasks %}
     <p>{{ tasks|length }} tasks shown</p>
 

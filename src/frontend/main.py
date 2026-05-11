@@ -130,7 +130,11 @@ async def task_status_fragment(request: Request, task_id: str):
                 if body.get("status") == "success":
                     status = body.get("data")
     except Exception:
-        pass
+        logger.warning("Failed to poll task status for %s", task_id)
+        return templates.TemplateResponse("_status_fragment.html", {
+            "request": request,
+            "status": None,
+        })
     return templates.TemplateResponse("_status_fragment.html", {
         "request": request,
         "status": status,
@@ -174,7 +178,7 @@ async def services_fragment(request: Request):
                 if body.get("status") == "success":
                     services_data = body.get("data", {}).get("services", [])
     except Exception:
-        pass
+        logger.warning("Failed to poll services health")
     return templates.TemplateResponse("_services_fragment.html", {
         "request": request,
         "services": services_data,
