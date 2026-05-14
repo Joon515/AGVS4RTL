@@ -43,12 +43,30 @@
 - 归档与清理落地：任务结束后将共享工作区产物复制到 `Output/TASK_ID/Result` 或 `Archive`，随后清理 `shared_workspace/TASK_ID`。
 - Docker 联通复验通过：`/v1/workflow/run` 返回 `final_stage=archive_success`，轨迹覆盖 `parser_initialize -> gen_stateless -> verify_stateless -> archive_success`。
 
+### Parser 模块正式定义
+
+完成 Parser 行为规范的书面化，明确其在整个系统中的边界与职责：
+
+- **I/O 冷启动**：接收请求后立即分配 `task_id`，创建 `Output/{task_id}/{Origin,Archive,Result}` 与 `shared_workspace/{task_id}/{specs,rtl,sim}` 目录结构，将原始输入落盘。
+- **语义路由**：利用 LLM 从非结构化文本提取 `UserTaskSpec` 关键字段；Semantic Router 过滤非法请求并判定 `IntentCategory`（如 FIX_BUG / GEN_WITH_TEST）。
+- **共享工作区隔离**：将参考文件复制到共享区，模块间仅传递文件路径（`spec_file_path` + `iteration`），不通过 API 传输大段文本。`iteration` 决定 Gen 是"从零开始"还是"增量修改"。
+- **控制面与数据面分离**：模块间回传 `WorkflowTraceStep`（含 status/detail）作为控制信号，实际产物（RTL、波形、日志）通过共享文件系统完成交换。
+- **结束归档**：任务完成或达到最大重试轮次后，将共享区产物搬运至 `Output/{task_id}/Result`，清理 `shared_workspace/{task_id}`。
+
 # 2026-04-12
 
 - 重构 `SpecReg` 核心数据模型：将其从扁平的实例列表升级为契合硬件特征的有向图结构（Graph Structure），引入 `RtlNode`、`RtlEdge` 和强类型枚举 `NodeType`（包含 `INSTANCE`, `COMBINATIONAL`, `SEQUENTIAL`），以便在多轮对话中渐进式细化模块层级。
 - 为 Gen Agent 引入基于 LangGraph 的内部工作流（`src/generator/workflow.py`），拆分出 `init_context_node`（读取前置规约与验证报错）、`architect_node`（类图节点细化）、`coder_node`（RTL代码生成）以及 `finalize_node`（归档落盘）四个核心节点。
 - 改造 `src/generator/main.py` 的 `/v1/generate` 接口，使其将任务委派给无状态的 LangGraph 工作流实例，确保服务级别的无状态性与图级别的局部状态流转。
-- 完善 `Agent_DEF.md` 中关于 Gen Agent 的技术规范，明确其内部 I/O 网络隔离、共享工作区访问机制以及扮演“架构师+程序员”的双重身份实现多轮对话修复。
+- 完善 `Agent_DEF.md` 中关于 Gen Agent 的技术规范，明确其内部 I/O 网络隔离、共享工作区访问机制以及扮演"架构师+程序员"的双重身份实现多轮对话修复。
+
+### Generator 模块正式定义
+
+完成 Generator 行为规范的书面化：
+
+- **I/O 边界**：基于 FastAPI 仅在容器内网提供服务，不对外开放端口。接收 Parser 传入的任务载荷（含 `UserTaskSpec` 路径、`iteration`、重试时的 `VerifyRpt` 路径），回传 `SpecReg` 路径与 RTL 路径，不通过 HTTP 传输代码文本。
+- **核心逻辑**：扮演"架构师 + 程序员"双重角色。维护多轮交互上下文——`iteration > 0` 时读取 Verify 提供的错误日志与反馈进行增量修复；生成符合语法规范的 Verilog 代码并落盘到共享区 `/rtl`。
+- **SpecReg 规约抽象**：将原始 `UserTaskSpec` 具象化为结构化的 `SpecReg`（规格注册表），以图结构描述 Verilog 模块（节点=子模块/逻辑单元，边=端口连线）。支持渐进式细化——在逐轮对话中不断拆解节点，直到每个节点被实现为纯组合逻辑或基础时序逻辑。`SpecReg` 同时作为后续 Verify 的验证契约。
 
 # 2026-04-17 v1
 
@@ -114,6 +132,18 @@
   - FAIL_COMPILE（RTL 语法错误）
   - FAIL_SEMANTIC（顶层端口与 SpecReg 不匹配）
 - 当前系统已具备最小“生成 + 验证 + 归档”闭环能力，为后续 retry 修复闭环与 Verify 动态仿真扩展提供稳定基线。
+
+### Verify 模块正式定义
+
+完成 Verify 行为规范的书面化（Agent_DEF sections 9-15），明确其在整个系统中的边界与职责：
+
+- **I/O 边界**：基于 FastAPI 仅在容器内网提供服务。接收 Parser 传入的验证任务载荷（含 `spec_file_path`、`rtl_path`），回传 `VerifyNodeOutput`（含 `VerifyRpt` 与日志路径），不通过 HTTP 传输完整日志/波形。
+- **分层验证逻辑**：扮演"裁判 + 诊断器"角色。按层级执行：(1) 静态契约核查（端口方向/位宽一致性、模块名匹配）→ FAIL_SEMANTIC；(2) iverilog 编译检查 → FAIL_COMPILE；(3) 动态仿真（后续扩展）→ FAIL_SIMULATION；(4) 基础设施异常 → INFRA_ERROR 或 TIMEOUT。全部通过则判决 PASS。
+- **SpecReg 契约中心化**：验证逻辑不依赖用户原始自然语言，以 Generator 产出的 `SpecReg` 为唯一契约。静态核查对照 `ports`、`clock_and_reset`、`protocols` 字段；动态仿真以 `functional_requirements`、`corner_cases`、`illegal_conditions` 为核心输入。
+- **错误压缩与修复提示**：将底层验证噪声压缩为结构化诊断——`ErrorSnapshot` 含错误分类、缺失端口、错误行号、失败摘要；`suggested_fix` 指示 Generator 需"代码级重写"还是"架构级回退重构"；`verdict` 使 Parser 可据此决定归档/重试/终止。
+- **文件约定**：产物统一写入 `shared_workspace/TASK_ID/sim/`，按迭代命名（`VerifyRpt_iterN.json`、`compile_iterN.log`、`sim_iterN.log`），与 Generator 的 `SpecReg_iterN.json` 版本对应。
+- **闭环协作**：向 Parser 回传判决结果决定工作流路由；向 Generator 提供 `error_details` 与 `suggested_fix` 作为下一轮修复输入；区分 `CODE_REWRITE`、`ARCH_REFACTOR`、`NONE` 三级修复建议。
+- **最小闭环要求**：至少具备 SpecReg/RTL 存在性检查、静态契约检查、编译检查、结构化报告输出四类能力，即可使系统具备基本的自动反馈与路由能力。
 
 # 2026-05-08 (大规模重构与功能补全)
 
@@ -192,3 +222,10 @@
 - 14 项交互修复：异步提交、轮询停止、分页目标、导航高亮、暗色主题、返回导航、API Key 掩码、列表刷新、Flash 消失、表单校验、一键重启、Config 持久化。
 - Config 双重栏修复：hx-swap 改为 outerHTML 避免嵌套重复 ID。
 - 测试：新增 tests/test_playwright_e2e.py（15 个 E2E 用例）。
+
+---
+
+# 2026-05-14 (文档与日志整理)
+
+- README 聚焦架构与入口信息，开发进度与待办迁移至 DEVLOG 统一维护，避免重复与过时内容。
+- 删除 `Agent_DEF.md`：将其中的 Parser / Generator / Verify 正式行为定义按对应日期（2026-03-24 / 2026-04-12 / 2026-04-17）归并到 DEVLOG 中，消除碎片化文档。

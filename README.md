@@ -52,32 +52,58 @@ AGVS4RTL/
 
 ---
 
-### 未来改进项目
+### 快速开始
 
-1. ~~引入失败注入测试与重试闭环验收~~ **（已完成）**。当前 retry 路径（FAIL_COMPILE、FAIL_SEMANTIC、INFRA_ERROR、PORT_DIRECTION、PORT_WIDTH）已通过集成测试验证，6/6 全部通过。
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
 
-2. 继续增强 Verify 的**静态契约核查粒度**。当前已实现端口方向、位宽等核查，后续可补充时钟/复位映射核查、协议端口映射、跨模块接口一致性校验等。
+# 2. 配置环境变量（LLM 密钥等）
+cp .env.example .env
+# 编辑 .env，至少设置 AGVS4RTL_LLM_ENABLED / AGVS4RTL_LLM_BASE_URL / AGVS4RTL_LLM_API_KEY
 
-3. 扩展 Verify 的**动态仿真能力**。当前已实现 cocotb testbench 自动生成（LLM 驱动）与 `simulate_node`，后续可补充覆盖率驱动测试生成、VCD 波形分析、断言自动生成等。
+# 3. 语法校验（快速检查，不依赖 Docker）
+python -m compileall src
 
-4. 强化 Generator 的**多轮 LLM 修复利用能力**。当前规则化修复已验证，但 LLM 驱动按失败类型（语义/编译/端口/位宽）的差异化修复策略仍未实现。
+# 4. 构建并启动三服务
+docker compose up -d --build
 
-5. 补充**工作流异常治理与可观测性**。当前已补充 Verify 状态文件机制、Parser 超时自动恢复、ParserChat 日志；后续可增加节点级耗时统计、任务级日志关联、失败现场保留策略。
+# 5. 健康检查
+curl http://localhost:8001/health
+```
 
 ---
 
-### 最新开发进度
+### 当前能力
 
-1. 完成 `src/common/models.py` 的大规模协议扩展：新增 `verify_rpt_path`、`source_file`、`testbench_path/makefile_path`、`rtl_paths` 等字段，以及 5 个注入标记常量。
+系统已完成 **Parser → Generator → Verify → Archive** 最小闭环，可通过 HTTP API 端到端运行：
 
-2. 完成 LLM 工具函数去重：创建 `src/common/llm_utils.py`，提取 `_chat_completions_url` 等函数及 LLM Header 常量；修复 N1（未定义 logger）和 N2（content.strip 不一致）两个 bug。
+| 能力 | 状态 |
+| :--- | :--- |
+| **意图解析与任务编排** | Parser 接收自然语言需求，生成结构化 `UserTaskSpec`，通过 LangGraph 状态机调度 Gen / Verify |
+| **RTL 代码生成** | Generator 产出结构化 `SpecReg` 与多文件 Verilog（含层级子模块），支持规则化生成与 LLM 驱动两种模式 |
+| **静态验证** | Verify 执行 Spec 存在性、端口方向/位宽一致性、`iverilog` 编译检查，输出 `PASS / FAIL_SEMANTIC / FAIL_COMPILE / INFRA_ERROR` |
+| **失败注入与重试闭环** | 5 条 retry 路径（COMPILE / SEMANTIC / INFRA / PORT_DIRECTION / PORT_WIDTH）已通过集成测试，6/6 通过 |
+| **动态仿真** | `simulate_node` 支持 LLM 驱动自动生成 cocotb testbench + Makefile，可选执行仿真 |
+| **超时治理** | Parser 对 Verify 可配超时（默认 240s），通过 `VerifyStatus` 状态文件实现超时后自动恢复 |
+| **WebUI** | 前端提供任务提交、进度查看、结果归档等交互界面，支持异步提交流程 |
 
-3. 完成 B4 重试闭环与多文件 HDL 生成：Parser 显式传递 `verify_rpt_path`；Generator 新增 `_apply_fix_from_verify_rpt()` 消费验证报告执行规则化修复；`finalize_node` 支持多文件 .v 输出。
+---
 
-4. 完成 B5 Cocotb 测试区生成：创建 `src/verify/simulate.py`，支持 LLM 驱动生成 cocotb testbench + 规则生成 Makefile；Verify 工作流新增 `simulate_node`。
+### 下一步
 
-5. 完成 Verify 超时治理：Parser 对 Verify 超时 20s → 240s（可配）；Verify 写 `VerifyStatus` 状态文件；Parser 超时后通过状态文件判断并自动恢复已完成结果。
+1. **静态契约核查增强**：补充时钟/复位映射检查、协议端口映射、跨模块接口一致性校验。
+2. **动态仿真深化**：覆盖率驱动测试生成、VCD 波形分析、断言自动生成。
+3. **LLM 差异化修复**：按失败类型（语义/编译/端口/位宽）实现不同的 LLM 修复策略。
+4. **可观测性提升**：节点级耗时统计、任务级日志关联、失败现场保留策略。
+5. **复杂模块支持**：当前规则化 Generator 对复杂处理器（如 rv32i）支持有限，需增强 LLM 驱动生成能力。
 
-6. 完成基础设施清理：修复 Dockerfile Git 合并冲突；标准化 `__init__.py`；去重 `HealthStatus`；修正 `.gitignore` 笔误；LLM 不可用时 Generator 抛明确错误。
+---
 
-7. 集成测试验证：`test_host_workflow.py` 6/6 全部通过（含 retry 闭环）；`test_fuzzy_requirement_workflow.py` 251s 完成；层级 HDL 多文件生成通过；cocotb testbench 生成通过。
+### 开发文档
+
+| 文档 | 说明 |
+| :--- | :--- |
+| `DEVLOG.md` | 开发日志，按日期记录变更动机、内容与验证结果；含 Parser / Generator / Verify 三模块的正式行为定义 |
+| `tests/README.md` | 集成测试的运行方式、分类标记与排错指南 |
+| `.github/copilot-instructions.md` | 编码规范、架构约定与常见陷阱（Copilot 自动读取） |
