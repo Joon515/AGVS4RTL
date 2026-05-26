@@ -18,6 +18,7 @@ from src.common.models import (
     NodeType,
     PortDef,
     PortDirection,
+    PortType,
     ResetType,
     RtlEdge,
     RtlNode,
@@ -40,7 +41,8 @@ class GenWorkflowState(TypedDict):
     - verify_rpt: 若为重试轮次，则尝试加载上一轮验证报告
     - previous_spec_reg: 若为重试轮次，则尝试加载上一轮 SpecReg
     - spec_reg: 本轮生成的结构化设计契约
-    - rtl_code: 本轮生成的 RTL 代码
+    - rtl_code: 本轮生成的 RTL 代码，兼容单文件路径
+    - rtl_files: 本轮生成的 RTL 文件映射，key 为文件名，value 为 Verilog 代码
     - gen_output: 最终输出载荷
     """
     task: WorkTaskPayload
@@ -51,6 +53,7 @@ class GenWorkflowState(TypedDict):
     previous_spec_reg: Optional[SpecReg]
     spec_reg: Optional[SpecReg]
     rtl_code: Optional[str]
+    rtl_files: Optional[Dict[str, str]]
     gen_output: Optional[GenNodeOutput]
     llm_config: Optional[LlmRuntimeConfig]
     llm_transcripts: Annotated[List[Dict[str, Any]], operator.add]
@@ -225,7 +228,6 @@ def _derive_nodes(task: WorkTaskPayload, verify_rpt: Optional[VerifyRpt]) -> Lis
             node_id="seq_done_logic",
             node_type=NodeType.SEQUENTIAL,
             description=description,
-            is_leaf=True,
         )
     ]
 
@@ -262,6 +264,145 @@ def _derive_edges() -> List[RtlEdge]:
     ]
 
 
+def _has_multi_file_directive(user_task_spec: UserTaskSpec) -> bool:
+    request_text = "\n".join(
+        [
+            *user_task_spec.refined_requirements,
+            *user_task_spec.design_rules,
+        ]
+    ).lower()
+    explicit_keywords = [
+        "agvs4rtl_inject_multi_file",
+        "multi-file",
+        "rtl files",
+        "rtl file",
+        "multiple rtl files",
+        "separate rtl files",
+        "independent rtl files",
+        "多个 rtl 文件",
+        "多 rtl 文件",
+        "多文件",
+        "分文件",
+        "分别落盘",
+    ]
+    return any(keyword in request_text for keyword in explicit_keywords)
+
+
+def _build_multi_file_spec_reg(task: WorkTaskPayload, user_task_spec: UserTaskSpec) -> SpecReg:
+    datapath_module = f"{task.top_module}_datapath"
+    control_module = f"{task.top_module}_control"
+
+    return SpecReg(
+        task_id=task.task_id,
+        iteration=task.iteration,
+        intent=task.intent,
+        top_module=task.top_module,
+        source_stage=ArtifactSourceStage.ARCHITECT,
+        module_description=f"Hierarchical multi-file SpecReg for {task.top_module}",
+        verification_directives=[
+            "Compile all generated RTL files together",
+            "Check top-level port contract against SpecReg",
+            "Check required child module definitions are present",
+        ],
+        functional_requirements=user_task_spec.refined_requirements,
+        ports=[
+            PortDef(
+                name="i_clk",
+                direction=PortDirection.INPUT,
+                width="1",
+                clock_domain="i_clk",
+                is_clock=True,
+                description="Primary clock input",
+            ),
+            PortDef(
+                name="i_rst_n",
+                direction=PortDirection.INPUT,
+                width="1",
+                clock_domain="i_clk",
+                is_reset=True,
+                description="Active-low asynchronous reset",
+            ),
+            PortDef(
+                name="i_data",
+                direction=PortDirection.INPUT,
+                width="8",
+                clock_domain="i_clk",
+                description="Input data byte",
+            ),
+            PortDef(
+                name="o_data",
+                direction=PortDirection.OUTPUT,
+                net_type=PortType.WIRE,
+                width="8",
+                clock_domain="i_clk",
+                description="Registered datapath output",
+            ),
+            PortDef(
+                name="o_valid",
+                direction=PortDirection.OUTPUT,
+                net_type=PortType.WIRE,
+                width="1",
+                clock_domain="i_clk",
+                description="Output valid flag",
+            ),
+        ],
+        clock_and_reset=[
+            ClockResetDef(
+                clock_name="i_clk",
+                reset_name="i_rst_n",
+                reset_type=ResetType.ASYNC_LOW,
+            )
+        ],
+        nodes=[
+            RtlNode(
+                node_id="u_control",
+                node_type=NodeType.INSTANCE,
+                module_name=control_module,
+                file_name=f"{control_module}.v",
+                instance_name="u_control",
+                parent_node_id="TOP",
+                description="Control submodule that raises valid after reset",
+                implementation_hint="Generate a reset-safe sequential valid flag",
+                is_rtl_file=True,
+            ),
+            RtlNode(
+                node_id="u_datapath",
+                node_type=NodeType.INSTANCE,
+                module_name=datapath_module,
+                file_name=f"{datapath_module}.v",
+                instance_name="u_datapath",
+                parent_node_id="TOP",
+                description="Datapath submodule that registers input data",
+                implementation_hint="Generate an 8-bit reset-safe register datapath",
+                is_rtl_file=True,
+            ),
+        ],
+        edges=[
+            RtlEdge(
+                source=EndpointRef(node_id="TOP", port_name="i_data"),
+                target=EndpointRef(node_id="u_datapath", port_name="i_data"),
+                signal_name="i_data",
+                width="8",
+                description="Top input data to datapath",
+            ),
+            RtlEdge(
+                source=EndpointRef(node_id="u_datapath", port_name="o_data"),
+                target=EndpointRef(node_id="TOP", port_name="o_data"),
+                signal_name="o_data",
+                width="8",
+                description="Datapath output to top output",
+            ),
+            RtlEdge(
+                source=EndpointRef(node_id="u_control", port_name="o_valid"),
+                target=EndpointRef(node_id="TOP", port_name="o_valid"),
+                signal_name="o_valid",
+                width="1",
+                description="Control valid to top output",
+            ),
+        ],
+    )
+
+
 def _build_dummy_spec_reg(
     task: WorkTaskPayload,
     user_task_spec: UserTaskSpec,
@@ -275,6 +416,9 @@ def _build_dummy_spec_reg(
     - 目标不是最终智能架构推理，而是先产生严格符合当前模型约束的 SpecReg。
     - 后续接入 LLM 时，可直接替换此函数内部逻辑，但输出结构应保持一致。
     """
+    if _has_multi_file_directive(user_task_spec):
+        return _build_multi_file_spec_reg(task, user_task_spec)
+
     module_description = f"Automated SpecReg for {task.top_module}"
 
     if verify_rpt is not None:
@@ -430,7 +574,12 @@ def _extract_verilog_code(content: str) -> str:
         content = fence_match.group(1)
 
     content = content.strip()
-    module_index = content.find("module ")
+    module_match = re.search(
+        r"\bmodule\s+([A-Za-z_][A-Za-z0-9_$]*)\s*(?:#\s*\(|\()",
+        content,
+        re.DOTALL,
+    )
+    module_index = module_match.start() if module_match is not None else -1
     endmodule_index = content.rfind("endmodule")
 
     if module_index >= 0 and endmodule_index >= module_index:
@@ -440,6 +589,78 @@ def _extract_verilog_code(content: str) -> str:
         raise ValueError("LLM response does not contain a complete Verilog module")
 
     return content.rstrip() + "\n"
+
+
+def _extract_single_verilog_module(content: str, expected_module_name: str) -> str:
+    rtl_code = _extract_verilog_code(content)
+    module_names = re.findall(
+        r"\bmodule\s+([A-Za-z_][A-Za-z0-9_$]*)\s*(?:#\s*\(|\()",
+        rtl_code,
+        re.DOTALL,
+    )
+    if len(module_names) != 1:
+        raise ValueError(f"LLM response must contain exactly one module for {expected_module_name}: {module_names}")
+    if module_names[0] != expected_module_name:
+        raise ValueError(f"LLM response module '{module_names[0]}' does not match expected '{expected_module_name}'")
+    return rtl_code
+
+
+def _normalize_rtl_file_name(file_name: str) -> str:
+    normalized = Path(file_name).name.strip()
+    if not normalized:
+        raise ValueError("RTL file name cannot be empty")
+    if normalized != file_name.strip():
+        raise ValueError(f"RTL file name must not include directories: {file_name}")
+    if not normalized.endswith(".v"):
+        raise ValueError(f"RTL file name must end with .v: {file_name}")
+    return normalized
+
+
+def _planned_rtl_files(spec_reg: SpecReg) -> List[Dict[str, Any]]:
+    planned_files: List[Dict[str, Any]] = [
+        {
+            "file_name": f"{spec_reg.top_module}.v",
+            "module_name": spec_reg.top_module,
+            "node": None,
+            "role": "top",
+        }
+    ]
+
+    seen_file_names = {planned_files[0]["file_name"]}
+    seen_module_names = {spec_reg.top_module}
+    for node in spec_reg.rtl_file_nodes():
+        if not node.file_name:
+            raise ValueError(f"RTL file node '{node.node_id}' is missing file_name")
+        if not node.module_name:
+            raise ValueError(f"RTL file node '{node.node_id}' is missing module_name")
+        file_name = _normalize_rtl_file_name(node.file_name)
+        if file_name == f"{spec_reg.top_module}.v" and node.module_name == spec_reg.top_module:
+            continue
+        if file_name in seen_file_names:
+            raise ValueError(f"duplicate RTL file name in SpecReg: {file_name}")
+        if node.module_name in seen_module_names:
+            raise ValueError(f"duplicate RTL module name in SpecReg: {node.module_name}")
+        seen_file_names.add(file_name)
+        seen_module_names.add(node.module_name)
+        planned_files.append(
+            {
+                "file_name": file_name,
+                "module_name": node.module_name,
+                "node": node,
+                "role": "child",
+            }
+        )
+
+    return planned_files
+
+
+def _generated_file_context(rtl_files: Dict[str, str]) -> str:
+    if not rtl_files:
+        return "No RTL files have been generated yet."
+    sections = []
+    for file_name, rtl_code in rtl_files.items():
+        sections.append(f"Generated file {file_name}:\n{rtl_code}")
+    return "\n\n".join(sections)
 
 
 def _extract_json_object(content: str) -> Dict[str, Any]:
@@ -484,7 +705,40 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
 
     normalized.setdefault("parameters", [])
     normalized.setdefault("ports", [])
-    normalized.setdefault("clock_and_reset", [])
+    clock_and_reset = normalized.get("clock_and_reset") or []
+    if isinstance(clock_and_reset, list):
+        clock_name = None
+        reset_name = None
+        reset_type = None
+        normalized_clock_reset = []
+        for item in clock_and_reset:
+            if not isinstance(item, dict):
+                continue
+            if {"clock_name", "reset_name", "reset_type"}.issubset(item.keys()):
+                normalized_clock_reset.append(item)
+                continue
+            item_type = str(item.get("type", "")).lower()
+            item_name = item.get("name")
+            if item_type == "clock" and item_name:
+                clock_name = item_name
+            if "reset" in item_type and item_name:
+                reset_name = item_name
+                active_level = str(item.get("active_level", "")).lower()
+                reset_type = "async_low" if active_level == "low" or item_name.endswith("_n") else "async_high"
+        if normalized_clock_reset:
+            normalized["clock_and_reset"] = normalized_clock_reset
+        elif clock_name and reset_name:
+            normalized["clock_and_reset"] = [
+                {
+                    "clock_name": clock_name,
+                    "reset_name": reset_name,
+                    "reset_type": reset_type or "async_low",
+                }
+            ]
+        else:
+            normalized["clock_and_reset"] = []
+    else:
+        normalized["clock_and_reset"] = []
     normalized.setdefault("protocols", [])
 
     normalized_nodes = []
@@ -495,13 +749,23 @@ def _normalize_architect_spec_payload(spec_payload: Dict[str, Any]) -> Dict[str,
         if not node_id:
             continue
         node_type = node.get("node_type") or node.get("type") or "combinational"
+        if str(node_type).lower() in {"module", "submodule", "rtl_file", "rtl-file"}:
+            node_type = "instance"
+        implementation_hint = node.get("implementation_hint")
+        if isinstance(implementation_hint, str) and not implementation_hint.strip():
+            implementation_hint = None
         normalized_nodes.append(
             {
                 "node_id": node_id,
                 "node_type": node_type,
                 "module_name": node.get("module_name"),
+                "file_name": node.get("file_name"),
+                "instance_name": node.get("instance_name"),
+                "parent_node_id": node.get("parent_node_id"),
                 "description": node.get("description", ""),
-                "is_leaf": node.get("is_leaf", node_type in {"combinational", "sequential"}),
+                "implementation_hint": implementation_hint,
+                "is_pure_comb_logic": node.get("is_pure_comb_logic", node_type == "combinational"),
+                "is_rtl_file": node.get("is_rtl_file", False),
             }
         )
     normalized["nodes"] = normalized_nodes
@@ -638,6 +902,87 @@ def _emit_verilog_with_llm(
     return transcript["extracted_rtl"], transcript
 
 
+def _emit_rtl_files_with_llm(
+    spec_reg: SpecReg,
+    user_task_spec: UserTaskSpec,
+    verify_rpt: Optional[VerifyRpt],
+    llm_config: LlmRuntimeConfig,
+) -> tuple[Dict[str, str], List[Dict[str, Any]]]:
+    retry_context = ""
+    if verify_rpt is not None:
+        retry_context = "\nPrevious verification report:\n" + verify_rpt.model_dump_json(indent=2)
+
+    planned_files = _planned_rtl_files(spec_reg)
+    rtl_files: Dict[str, str] = {}
+    transcripts: List[Dict[str, Any]] = []
+
+    for index, file_plan in enumerate(planned_files):
+        file_name = str(file_plan["file_name"])
+        module_name = str(file_plan["module_name"])
+        node = file_plan["node"]
+        role = str(file_plan["role"])
+        if node is None:
+            node_context = (
+                "Current file role: top-level RTL file. Generate only the top module. "
+                "The top module should declare the SpecReg top-level ports, local wires, and child instantiations. "
+                "Do not include child module definitions in this file."
+            )
+        else:
+            node_context = (
+                "Current file role: child RTL file. Generate only the child module for this RtlNode.\n"
+                f"RtlNode:\n{node.model_dump_json(indent=2)}"
+            )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert Verilog RTL engineer in a multi-file generation workflow. "
+                    "Generate synthesizable Verilog-2001 only. Return exactly one complete Verilog module and no explanation. "
+                    "Do not wrap multiple modules in one response. Do not use SystemVerilog-only syntax."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Generate one RTL file for the current SpecReg file plan. "
+                    f"This is file {index + 1} of {len(planned_files)}.\n"
+                    f"Required file name: {file_name}\n"
+                    f"Required module name: {module_name}\n"
+                    f"{node_context}\n\n"
+                    "Respect these hard constraints:\n"
+                    "- Keep the required module name exactly.\n"
+                    "- Keep top-level module ports exactly as declared in SpecReg when generating the top file.\n"
+                    "- Do not invent undeclared top-level ports.\n"
+                    "- Use child module names from SpecReg instance nodes when generating top-level instantiations.\n"
+                    "- Use simple Verilog-2001 constructs only.\n\n"
+                    f"UserTaskSpec:\n{user_task_spec.model_dump_json(indent=2)}\n\n"
+                    f"SpecReg:\n{spec_reg.model_dump_json(indent=2)}\n\n"
+                    f"Already generated RTL files:\n{_generated_file_context(rtl_files)}"
+                    f"{retry_context}"
+                ),
+            },
+        ]
+
+        content, transcript = _call_openai_compatible_chat(llm_config, messages)
+        rtl_code = _extract_single_verilog_module(content, module_name)
+        rtl_files[file_name] = rtl_code
+        transcript.update(
+            {
+                "stage": "coder",
+                "profile": llm_config.profile,
+                "turn_index": index,
+                "file_name": file_name,
+                "module_name": module_name,
+                "role": role,
+                "extracted_rtl": rtl_code,
+            }
+        )
+        transcripts.append(transcript)
+
+    return rtl_files, transcripts
+
+
 def _build_spec_reg_with_llm(
     task: WorkTaskPayload,
     user_task_spec: UserTaskSpec,
@@ -666,7 +1011,11 @@ def _build_spec_reg_with_llm(
                 "Use port directions input, output, or inout, and net types wire, reg, or logic. "
                 "verification_directives, functional_requirements, corner_cases, illegal_conditions, "
                 "and latency_notes must be arrays of strings. "
-                "nodes must use node_id, node_type, module_name, description, and is_leaf. "
+                "nodes must use node_id, node_type, module_name, description, is_pure_comb_logic, and is_rtl_file. "
+                "For explicitly requested multi-file or hierarchical designs, use instance nodes with "
+                "file_name, instance_name, parent_node_id=TOP, implementation_hint, and is_rtl_file=true. "
+                "Use is_pure_comb_logic=true only for indivisible pure combinational logic nodes; "
+                "sequential and instance nodes must keep is_pure_comb_logic=false. "
                 "For flat combinational designs, use nodes=[] and edges=[]. "
                 "Only include edges when source and target are EndpointRef objects with node_id and port_name."
             ),
@@ -782,11 +1131,14 @@ def architect_node(state: GenWorkflowState) -> Dict[str, Any]:
             )
             return {"spec_reg": spec_reg, "llm_transcripts": [llm_transcript]}
         except Exception as exc:  # noqa: BLE001
-            fallback_spec_reg = _build_dummy_spec_reg(
-                task=task,
-                user_task_spec=user_task_spec,
-                verify_rpt=verify_rpt,
-            )
+            if _has_multi_file_directive(user_task_spec):
+                fallback_spec_reg = _build_multi_file_spec_reg(task, user_task_spec)
+            else:
+                fallback_spec_reg = _build_dummy_spec_reg(
+                    task=task,
+                    user_task_spec=user_task_spec,
+                    verify_rpt=verify_rpt,
+                )
             return {
                 "spec_reg": fallback_spec_reg,
                 "llm_transcripts": [
@@ -813,9 +1165,9 @@ def coder_node(state: GenWorkflowState) -> Dict[str, Any]:
     节点 3：程序员节点。
 
     当前职责：
-    1. 仅依据 SpecReg 生成 RTL 代码。
+    1. 仅依据 SpecReg 生成 RTL 代码或 RTL 文件集合。
     2. 不直接依赖原始 prompt，避免设计事实漂移。
-    3. 输出最终 Verilog 字符串。
+    3. 输出最终 Verilog 字符串或文件名到 Verilog 字符串的映射。
 
     后续 LLM 接入点：
     - 可在本节点中将 SpecReg 序列化为上下文提示，让模型生成 RTL；
@@ -831,17 +1183,34 @@ def coder_node(state: GenWorkflowState) -> Dict[str, Any]:
         raise ValueError("user_task_spec is missing")
 
     if llm_config is not None and llm_config.enabled and not _has_injection_directive(spec_reg):
+        if spec_reg.rtl_file_nodes():
+            rtl_files, llm_transcripts = _emit_rtl_files_with_llm(
+                spec_reg=spec_reg,
+                user_task_spec=user_task_spec,
+                verify_rpt=verify_rpt,
+                llm_config=llm_config,
+            )
+            return {
+                "rtl_code": rtl_files[f"{spec_reg.top_module}.v"],
+                "rtl_files": rtl_files,
+                "llm_transcripts": llm_transcripts,
+            }
+
         rtl_code, llm_transcript = _emit_verilog_with_llm(
             spec_reg=spec_reg,
             user_task_spec=user_task_spec,
             verify_rpt=verify_rpt,
             llm_config=llm_config,
         )
-        return {"rtl_code": rtl_code, "llm_transcripts": [llm_transcript]}
-    else:
-        rtl_code = _emit_verilog_from_spec(spec_reg)
+        return {
+            "rtl_code": rtl_code,
+            "rtl_files": {f"{spec_reg.top_module}.v": rtl_code},
+            "llm_transcripts": [llm_transcript],
+        }
 
-    return {"rtl_code": rtl_code}
+    rtl_code = _emit_verilog_from_spec(spec_reg)
+
+    return {"rtl_code": rtl_code, "rtl_files": {f"{spec_reg.top_module}.v": rtl_code}}
 
 
 def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
@@ -860,12 +1229,15 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     task = state["task"]
     spec_reg = state.get("spec_reg")
     rtl_code = state.get("rtl_code")
+    rtl_files = state.get("rtl_files")
     llm_transcripts = state.get("llm_transcripts", [])
 
     if spec_reg is None:
         raise ValueError("spec_reg is missing at finalize stage")
-    if rtl_code is None:
-        raise ValueError("rtl_code is missing at finalize stage")
+    if rtl_files is None:
+        if rtl_code is None:
+            raise ValueError("rtl_code is missing at finalize stage")
+        rtl_files = {f"{task.top_module}.v": rtl_code}
 
     requirements_text = "\n".join(spec_reg.functional_requirements)
     shared_task_dir = Path(task.shared_task_dir)
@@ -879,8 +1251,13 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     spec_file_path = specs_dir / f"SpecReg_iter{task.iteration}.json"
     spec_file_path.write_text(spec_reg.model_dump_json(indent=2), encoding="utf-8")
 
+    rtl_paths: List[str] = []
+    for file_name, file_content in rtl_files.items():
+        rtl_file_path = rtl_dir / _normalize_rtl_file_name(file_name)
+        rtl_file_path.write_text(file_content, encoding="utf-8")
+        rtl_paths.append(str(rtl_file_path))
+
     rtl_path = rtl_dir / f"{task.top_module}.v"
-    rtl_path.write_text(rtl_code, encoding="utf-8")
     if task.iteration == 0 and "AGVS4RTL_INJECT_INFRA_MISSING_RTL_ONCE" in requirements_text:
         rtl_path.unlink()
 
@@ -920,6 +1297,8 @@ def finalize_node(state: GenWorkflowState) -> Dict[str, Any]:
     gen_output = GenNodeOutput(
         spec_file_path=str(spec_file_path),
         rtl_path=str(rtl_path),
+        rtl_paths=rtl_paths,
+        top_rtl_path=str(rtl_path),
         summary=summary,
     )
 
@@ -980,6 +1359,7 @@ def run_gen_workflow(payload: WorkTaskPayload, llm_config: Optional[LlmRuntimeCo
         "previous_spec_reg": None,
         "spec_reg": None,
         "rtl_code": None,
+        "rtl_files": None,
         "gen_output": None,
         "llm_config": llm_config,
         "llm_transcripts": [],

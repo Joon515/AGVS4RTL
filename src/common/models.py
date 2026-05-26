@@ -267,8 +267,13 @@ class RtlNode(StrictBaseModel):
     node_id: str = Field(..., description="节点唯一标识，如 u_fetch_unit 或 blk_adder")
     node_type: NodeType = Field(default=NodeType.INSTANCE, description="节点类型")
     module_name: Optional[str] = Field(default=None, description="若是子模块例化，对应的模块名")
+    file_name: Optional[str] = Field(default=None, description="该节点对应的 RTL 文件名")
+    instance_name: Optional[str] = Field(default=None, description="父模块中例化该节点时使用的实例名")
+    parent_node_id: Optional[str] = Field(default=None, description="父节点 ID；顶层父节点可使用 TOP")
     description: str = Field(default="", description="节点功能描述与内部逻辑说明")
-    is_leaf: bool = Field(default=False, description="是否为不可再分的叶子节点")
+    implementation_hint: Optional[str] = Field(default=None, description="给 Coder 的模块实现提示")
+    is_pure_comb_logic: bool = Field(default=False, description="是否为不可再分的纯组合逻辑节点")
+    is_rtl_file: bool = Field(default=False, description="是否需要为该节点计划独立 RTL 文件生成任务")
 
     @field_validator("node_id")
     @classmethod
@@ -280,15 +285,43 @@ class RtlNode(StrictBaseModel):
     def validate_module_name(cls, v: Optional[str]) -> Optional[str]:
         return _validate_optional_identifier(v, "node.module_name")
 
+    @field_validator("file_name")
+    @classmethod
+    def validate_file_name(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "node.file_name")
+
+    @field_validator("instance_name")
+    @classmethod
+    def validate_instance_name(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_identifier(v, "node.instance_name")
+
+    @field_validator("parent_node_id")
+    @classmethod
+    def validate_parent_node_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "TOP":
+            return v
+        return _validate_identifier(v, "node.parent_node_id")
+
+    @field_validator("implementation_hint")
+    @classmethod
+    def validate_implementation_hint(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "node.implementation_hint")
+
     @model_validator(mode="after")
     def validate_node_consistency(self) -> "RtlNode":
         if self.node_type == NodeType.INSTANCE and not self.module_name:
             raise ValueError(f"instance node '{self.node_id}' must provide module_name")
+        if self.node_type == NodeType.INSTANCE and self.is_pure_comb_logic:
+            raise ValueError(f"instance node '{self.node_id}' cannot be marked as pure combinational logic")
+        if self.node_type == NodeType.SEQUENTIAL and self.is_pure_comb_logic:
+            raise ValueError(f"sequential node '{self.node_id}' cannot be marked as pure combinational logic")
         if self.node_type in {NodeType.COMBINATIONAL, NodeType.SEQUENTIAL}:
             if self.module_name is not None:
-                raise ValueError(f"leaf logic node '{self.node_id}' should not provide module_name")
-            if not self.is_leaf:
-                raise ValueError(f"node '{self.node_id}' with type '{self.node_type}' must be leaf")
+                raise ValueError(f"inline logic node '{self.node_id}' should not provide module_name")
+        if self.node_type == NodeType.COMBINATIONAL and not self.is_pure_comb_logic:
+            raise ValueError(f"combinational node '{self.node_id}' must be marked as pure combinational logic")
+        if self.is_rtl_file and not self.file_name:
+            raise ValueError(f"node '{self.node_id}' marked as is_rtl_file must provide file_name")
         return self
 
 
@@ -545,8 +578,12 @@ class SpecReg(BaseSyncMeta):
         return len(self.nodes) > 0
 
 
-    def leaf_nodes(self) -> List[RtlNode]:
-        return [n for n in self.nodes if n.is_leaf]
+    def pure_comb_logic_nodes(self) -> List[RtlNode]:
+        return [n for n in self.nodes if n.is_pure_comb_logic]
+
+
+    def rtl_file_nodes(self) -> List[RtlNode]:
+        return [n for n in self.nodes if n.is_rtl_file]
 
 
     def instance_nodes(self) -> List[RtlNode]:
@@ -800,6 +837,8 @@ class WorkTaskPayload(StrictBaseModel):
 class GenNodeOutput(StrictBaseModel):
     spec_file_path: str = Field(..., description="SpecReg 文件路径")
     rtl_path: str = Field(..., description="Coder 生成的 RTL 文件路径")
+    rtl_paths: List[str] = Field(default_factory=list, description="本轮生成的全部 RTL 文件路径；单文件任务为单元素列表")
+    top_rtl_path: Optional[str] = Field(default=None, description="顶层 RTL 文件路径；默认与 rtl_path 一致")
     summary: str = Field(..., description="对本次生成动作的简短摘要")
 
     @field_validator("spec_file_path", "rtl_path", "summary")
@@ -807,16 +846,46 @@ class GenNodeOutput(StrictBaseModel):
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"GenNodeOutput.{info.field_name}")
 
+    @field_validator("rtl_paths")
+    @classmethod
+    def validate_rtl_paths(cls, v: List[str]) -> List[str]:
+        return _validate_non_empty_str_list(v, "GenNodeOutput.rtl_paths")
+
+    @field_validator("top_rtl_path")
+    @classmethod
+    def validate_top_rtl_path(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_optional_non_empty_str(v, "GenNodeOutput.top_rtl_path")
+
+    @model_validator(mode="after")
+    def normalize_rtl_paths(self) -> "GenNodeOutput":
+        if not self.rtl_paths:
+            self.rtl_paths = [self.rtl_path]
+        if self.top_rtl_path is None:
+            self.top_rtl_path = self.rtl_path
+        return self
+
 
 class VerifyTaskPayload(StrictBaseModel):
     task: WorkTaskPayload = Field(..., description="原始任务载荷")
     spec_file_path: str = Field(..., description="用于核对接口和生成 Testbench 的 SpecReg 文件路径")
     rtl_path: str = Field(..., description="待验证的 RTL 文件路径")
+    rtl_paths: List[str] = Field(default_factory=list, description="待编译验证的全部 RTL 文件路径；为空时回退到 rtl_path")
 
     @field_validator("spec_file_path", "rtl_path")
     @classmethod
     def validate_non_empty(cls, v: str, info) -> str:
         return _validate_non_empty_str(v, f"VerifyTaskPayload.{info.field_name}")
+
+    @field_validator("rtl_paths")
+    @classmethod
+    def validate_rtl_paths(cls, v: List[str]) -> List[str]:
+        return _validate_non_empty_str_list(v, "VerifyTaskPayload.rtl_paths")
+
+    @model_validator(mode="after")
+    def normalize_rtl_paths(self) -> "VerifyTaskPayload":
+        if not self.rtl_paths:
+            self.rtl_paths = [self.rtl_path]
+        return self
 
 
 class VerifyNodeOutput(StrictBaseModel):

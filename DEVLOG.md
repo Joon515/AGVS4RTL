@@ -1,3 +1,25 @@
+# 2026-04-30 v1
+
+- Generator 支持真实 LLM 多文件 Coder 多轮对话：Architect 先规划 `SpecReg.rtl_file_nodes()`，Coder 按计划逐轮生成单个 Verilog module，并通过 `rtl_files` 统一落盘到 `rtl_paths`，供 Verify 作为同一编译单元处理。
+- 增强 Architect LLM 输出归一化：兼容分离的 `clock_and_reset`、`module`/`submodule`/`rtl_file` 节点类型别名、空 `implementation_hint` 和不完整边，降低 schema 偏差导致的 fallback 概率。
+- 修复多文件真实 LLM 路径中的两个解析问题：跳过重复顶层 RTL file node；Verilog module 提取改为匹配真实 `module name (` / `module name #(` 声明，避免把自然语言说明误识别为模块。
+- 协调真实 LLM 多轮生成超时：Parser 默认 Generator 调用超时提升到 420 秒，Compose 注入默认同步为 420 秒，宿主 smoke 客户端超时提升到 540 秒。
+- 验证：`test_llm_multi_file_explicit_workflow.py` 真实 LLM 链路完成 `parser_initialize -> gen_stateless -> verify_stateless -> archive_success`，生成三份 RTL 文件并通过 Verify PASS；smoke 断言改为要求 Architect/Coder transcript，Parser transcript 作为可选分析产物。
+
+# 2026-04-29 v10
+
+- 收紧 `RtlNode` 图节点语义：移除 `is_leaf` 字段与兼容迁移，新增 `is_pure_comb_logic` 表示不可再分的纯组合逻辑，新增 `is_rtl_file` 表示该节点需要计划独立 RTL 文件生成。
+- Generator 的 Architect LLM 提示与 SpecReg 归一化改用 `is_pure_comb_logic` / `is_rtl_file`；顺序逻辑与实例节点不再被错误标记为叶子节点。
+- 多文件落盘入口改为读取 `SpecReg.rtl_file_nodes()`，只有显式 `is_rtl_file=true` 的节点会触发独立 RTL 文件生成路径；多文件验收脚本补充新字段断言并禁止输出旧 `is_leaf`。
+
+# 2026-04-29 v9
+
+- 扩展跨服务协议以兼容多 RTL 文件：`GenNodeOutput` 与 `VerifyTaskPayload` 新增 `rtl_paths`，并保留 `rtl_path` 作为顶层 RTL 主文件路径；`RtlNode` 增补 `file_name`、`instance_name`、`parent_node_id`、`implementation_hint` 等模块化生成元数据。
+- Generator 增加确定性多文件注入路径：当需求包含 `AGVS4RTL_INJECT_MULTI_FILE` 时，生成包含 TOP、control、datapath 实例节点与边的图结构 SpecReg，并落盘顶层、控制、数据通路三个 Verilog 文件。
+- Parser 在调用 Verify 时转发完整 `rtl_paths`，保持旧单文件任务自动归一化兼容。
+- Verify 支持将多个 RTL 文件作为同一编译单元交给 `iverilog`，并在语义检查中确认 SpecReg 子模块声明存在。
+- 新增 `test_multi_file_workflow.py` 宿主机验收脚本，覆盖三文件生成、归档与 Verify PASS 主路径。
+
 # 2026-03-21
 
 - 同步 `pyproject.toml` 依赖到 FastAPI 架构：移除 `celery`、`redis`，新增 `fastapi`、`uvicorn`、`httpx`，并将 `semantic-router` 作为核心依赖。

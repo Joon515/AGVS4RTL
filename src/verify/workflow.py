@@ -223,6 +223,10 @@ def _load_rtl_text(rtl_path: str) -> str:
     return rtl_file.read_text(encoding="utf-8")
 
 
+def _load_rtl_texts(rtl_paths: List[str]) -> str:
+    return "\n\n".join(_load_rtl_text(rtl_path) for rtl_path in rtl_paths)
+
+
 def _build_paths(task_payload: VerifyTaskPayload) -> Dict[str, str]:
     """
     构建 Verify 阶段所需的统一输出路径。
@@ -375,6 +379,19 @@ def _check_semantic_contract(spec_reg: SpecReg, rtl_text: str) -> List[PortMisma
         )
         return mismatches
 
+    for node in spec_reg.instance_nodes():
+        if node.module_name and f"module {node.module_name}" not in rtl_text:
+            mismatches.append(
+                PortMismatch(
+                    expected_port=node.module_name,
+                    actual_port=None,
+                    detail=(
+                        "required child module declaration missing from RTL file set: "
+                        f"node_id={node.node_id}"
+                    ),
+                )
+            )
+
     actual_port_decls = _extract_declared_ports(rtl_text, spec_reg.top_module)
     actual_ports = set(actual_port_decls.keys())
     expected_ports = {port.name for port in spec_reg.ports}
@@ -469,7 +486,7 @@ def _parse_compile_errors(log_text: str) -> List[CompileError]:
 
 
 def _run_iverilog_compile(
-    rtl_path: str,
+    rtl_paths: List[str],
     top_module: str,
     output_dir: str,
     compile_log_path: str,
@@ -482,8 +499,8 @@ def _run_iverilog_compile(
     - 失败：CompileError 列表
 
     说明：
-    - 当前仅编译单个 RTL 文件，适配 MVP 生成器输出
-    - 后续若引入多文件/子模块，可在此扩展文件收集逻辑
+    - 单文件任务传入单元素列表
+    - 多文件任务传入完整 RTL 文件集合，由 iverilog 一次性编译
     """
     output_path = Path(output_dir) / f"{top_module}.out"
 
@@ -494,7 +511,7 @@ def _run_iverilog_compile(
         top_module,
         "-o",
         str(output_path),
-        rtl_path,
+        *rtl_paths,
     ]
 
     result = subprocess.run(
@@ -651,7 +668,7 @@ def init_context_node(state: VerifyWorkflowState) -> Dict[str, Any]:
         }
 
     try:
-        rtl_text = _load_rtl_text(task_payload.rtl_path)
+        rtl_text = _load_rtl_texts(task_payload.rtl_paths)
     except Exception as exc:  # noqa: BLE001
         return {
             "iteration": task_payload.task.iteration,
@@ -662,7 +679,7 @@ def init_context_node(state: VerifyWorkflowState) -> Dict[str, Any]:
             "compile_log_path": paths["compile_log_path"],
             "verify_rpt": _build_infra_error_report(
                 task_payload,
-                f"failed to load RTL from {task_payload.rtl_path}: {exc}",
+                f"failed to load RTL file set {task_payload.rtl_paths}: {exc}",
             ),
         }
 
@@ -740,7 +757,7 @@ def compile_check_node(state: VerifyWorkflowState) -> Dict[str, Any]:
 
     try:
         compile_errors = _run_iverilog_compile(
-            rtl_path=task_payload.rtl_path,
+            rtl_paths=task_payload.rtl_paths,
             top_module=task_payload.task.top_module,
             output_dir=sim_dir,
             compile_log_path=compile_log_path,

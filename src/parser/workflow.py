@@ -442,11 +442,11 @@ def gen_stateless_node(state: WorkflowState) -> Dict[str, Any]:
     endpoint = f"{gen_base_url}/v1/generate"
 
     # 注意：这里只通过控制面传递轻量载荷，不直接传输大段 RTL 文本。
-    # 支持 LLM 生成等慢路径，超时可通过 GEN_SERVICE_TIMEOUT_SECONDS 配置，默认 240 秒
+    # 支持 LLM 生成等慢路径，超时可通过 GEN_SERVICE_TIMEOUT_SECONDS 配置，默认 420 秒
     try:
-        gen_timeout = float(os.getenv("GEN_SERVICE_TIMEOUT_SECONDS", "240"))
+        gen_timeout = float(os.getenv("GEN_SERVICE_TIMEOUT_SECONDS", "420"))
     except Exception:
-        gen_timeout = 240.0
+        gen_timeout = 420.0
     with httpx.Client(timeout=gen_timeout) as client:
         response = client.post(
             endpoint,
@@ -503,6 +503,7 @@ def verify_stateless_node(state: WorkflowState) -> Dict[str, Any]:
         task=task,
         spec_file_path=gen_output.spec_file_path,
         rtl_path=gen_output.rtl_path,
+        rtl_paths=gen_output.rtl_paths,
     )
 
     with httpx.Client(timeout=20.0) as client:
